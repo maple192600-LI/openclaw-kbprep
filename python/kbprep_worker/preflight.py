@@ -1,0 +1,156 @@
+"""
+preflight — check Python, uv, MinerU availability, GPU/CUDA, workspace write permissions.
+"""
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+from .envelope import ok, fail
+from .mineru_adapter import find_mineru
+from .setup_env import detect_device
+
+
+def run(data: dict) -> None:
+    workspace_path = data.get("workspace_path", ".")
+    profile = data.get("profile", "lite")
+
+    warnings: list[str] = []
+    errors: list[str] = []
+    versions: dict[str, Any] = {}
+
+    # Python version
+    versions["python"] = sys.version.split()[0]
+    versions["python_executable"] = sys.executable
+
+    # PyMuPDF powers the lightweight trusted text-layer PDF route.
+    try:
+        import fitz  # PyMuPDF
+        versions["pymupdf"] = getattr(fitz, "__version__", "unknown")
+        versions["pdf_text_layer_available"] = True
+    except ImportError:
+        versions["pymupdf"] = "not installed"
+        versions["pdf_text_layer_available"] = False
+        warnings.append(
+            "PyMuPDF not installed. Trusted text-layer PDFs cannot use the lightweight "
+            "pdf_text_layer route in this Python environment."
+        )
+
+    versions["runtime_isolated"] = True
+
+    # MinerU CLI
+    try:
+        mineru_path = find_mineru()
+        versions["mineru_path"] = mineru_path
+        try:
+            r = subprocess.run([mineru_path, "--version"], capture_output=True, text=True, timeout=10)
+            versions["mineru"] = r.stdout.strip() if r.returncode == 0 else "unknown"
+        except Exception:
+            versions["mineru"] = "error"
+    except FileNotFoundError:
+        errors.append(
+            "MinerU not found for the selected Python environment. "
+            "Run kbprep_preflight again after the plugin-local .kbprep/venv setup finishes, "
+            "or reinstall the plugin if the environment is incomplete."
+        )
+
+    # torch + GPU detection
+    try:
+        import torch
+        torch_version = f"{torch.__version__}"
+        versions["torch_cuda_available"] = bool(torch.cuda.is_available())
+        versions["torch_cuda_version"] = torch.version.cuda or "none"
+        versions["torch_device_count"] = int(torch.cuda.device_count())
+        if torch.version.cuda:
+            torch_version += f"+cuda{torch.version.cuda}"
+            if torch.cuda.is_available():
+                props = torch.cuda.get_device_properties(0)
+                versions["torch"] = torch_version
+                versions["gpu_name"] = torch.cuda.get_device_name(0)
+                versions["gpu_vram_gb"] = f"{props.total_memory / 1024**3:.1f}"
+                versions["gpu_count"] = str(torch.cuda.device_count())
+            else:
+                versions["torch"] = torch_version
+                warnings.append("torch has CUDA support but no GPU is available.")
+        else:
+            versions["torch"] = f"{torch_version}+cpu"
+            # Check if nvidia driver exists
+            nvidia_smi = shutil.which("nvidia-smi")
+            if nvidia_smi:
+                versions["nvidia_smi_path"] = nvidia_smi
+                warnings.append(
+                    "NVIDIA GPU detected but torch is CPU-only. "
+                    "The plugin setup step will try to install CUDA torch inside its own .kbprep/venv only."
+                )
+    except ImportError:
+        versions["torch"] = "not installed"
+        versions["torch_cuda_available"] = False
+        versions["torch_cuda_version"] = "not installed"
+        versions["torch_device_count"] = 0
+
+    # MinerU device mode
+    device = detect_device()
+    versions["mineru_device"] = device
+    if device == "cpu":
+        warnings.append("MinerU will run in CPU mode. GPU acceleration recommended for faster processing.")
+
+    # MinerU model cache check
+    try:
+        from pathlib import Path as P
+        import os
+        hf_cache = P(os.path.expanduser("~")) / ".cache" / "huggingface" / "hub"
+        # Check for the main model pack that MinerU 3.x uses
+        main_model = hf_cache / "models--opendatalab--PDF-Extract-Kit-1.0"
+        has_main = main_model.exists() and (main_model / "blobs").exists() and any((main_model / "blobs").iterdir())
+        if has_main:
+            blob_size = sum(f.stat().st_size for f in (main_model / "blobs").iterdir() if f.is_file())
+            versions["mineru_models_cached"] = f"PDF-Extract-Kit-1.0 ({blob_size / 1024**3:.1f} GB)"
+        else:
+            warnings.append(
+                "MinerU model pack (PDF-Extract-Kit-1.0) not cached. "
+                "First run will download ~2GB from HuggingFace. "
+                "Set HTTP_PROXY/HTTPS_PROXY if behind a firewall."
+            )
+            versions["mineru_models_cached"] = "none"
+    except Exception:
+        warnings.append("Could not check MinerU model cache.")
+
+    # Available memory
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        versions["memory_total_gb"] = f"{mem.total / 1024**3:.1f}"
+        versions["memory_available_gb"] = f"{mem.available / 1024**3:.1f}"
+    except ImportError:
+        try:
+            usage = shutil.disk_usage(str(Path(workspace_path)))
+            versions["disk_free_gb"] = f"{usage.free / 1024**3:.1f}"
+        except Exception:
+            pass
+
+    # Workspace write check
+    ws = Path(workspace_path)
+    try:
+        ws.mkdir(parents=True, exist_ok=True)
+        test_file = ws / ".kbprep_write_test"
+        test_file.write_text("ok", encoding="utf-8")
+        test_file.unlink()
+    except Exception as e:
+        errors.append(f"Workspace not writable: {e}")
+
+    # Disk space
+    try:
+        usage = shutil.disk_usage(str(ws))
+        free_gb = usage.free / (1024**3)
+        versions["disk_free_gb"] = f"{free_gb:.1f}"
+        min_gb = 25 if profile == "standard" else 2
+        if free_gb < min_gb:
+            errors.append(f"Disk space low: {free_gb:.1f} GB free, need {min_gb} GB")
+    except Exception:
+        warnings.append("Could not check disk space.")
+
+    if errors:
+        fail("KBPREP_WORKER_NOT_READY", "; ".join(errors), details={"versions": versions}, warnings=warnings)
+    else:
+        ok(data={"ok": True, "versions": versions, "warnings": warnings, "errors": errors})

@@ -1,0 +1,15 @@
+[project]
+name = "kbprep-worker"
+version = "0.4.0"
+description = "KBPrep v4 Python worker: diagnose, convert, normalize, blockify, classify, clean, split, quality audit"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "mineru[all]==3.2.1"
+]
+
+[project.optional-dependencies]
+cuda = ["torch>=2.8.0", "torchvision>=0.23.0"]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"

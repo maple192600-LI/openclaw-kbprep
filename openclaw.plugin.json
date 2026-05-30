@@ -1,0 +1,68 @@
+{
+  "id": "openclaw-kbprep",
+  "name": "KB Prep Tool",
+  "description": "Convert raw local files into clean Markdown for Obsidian or LLM Wiki use. It does not build indexes, generate wiki pages, or harvest remote sources.",
+  "version": "0.4.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "device_override": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "auto"
+          },
+          {
+            "type": "string",
+            "const": "cuda"
+          },
+          {
+            "type": "string",
+            "const": "cpu"
+          }
+        ],
+        "description": "Force device mode. Default 'auto' (detect)."
+      },
+      "max_cpu_threads": {
+        "type": "number",
+        "description": "Max CPU threads for CPU-mode inference. Default 4.",
+        "default": 4
+      },
+      "min_free_memory_gb": {
+        "type": "number",
+        "description": "Min free memory GB before batch pauses. Default 4.",
+        "default": 4
+      },
+      "mineru_timeout_seconds": {
+        "type": "number",
+        "description": "Timeout in seconds for a single MinerU conversion subprocess. Default 1140.",
+        "default": 1140
+      },
+      "python_path": {
+        "type": "string",
+        "description": "Optional absolute path to a base Python executable used only to create the plugin-local .kbprep/venv runtime."
+      },
+      "ai_review_provider": {
+        "type": "string",
+        "description": "Optional provider override for mode='ai_review'."
+      },
+      "ai_review_model": {
+        "type": "string",
+        "description": "Optional model override for mode='ai_review'."
+      }
+    },
+    "additionalProperties": false
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "kbprep_preflight",
+      "kbprep_analyze",
+      "kbprep_prepare",
+      "kbprep_apply_review",
+      "kbprep_prepare_batch"
+    ]
+  }
+}

@@ -1,0 +1,656 @@
+"""
+diagnose — file quality diagnosis for kbprep v4.
+Read-only: does not modify any files.
+
+Outputs: file hash, type, page count, text layer health, garbled ratio,
+image page ratio, OCR recommendation, and detailed quality metrics.
+"""
+import hashlib
+import json
+import logging
+import os
+import re
+import sys
+import zipfile
+from pathlib import Path
+
+from .envelope import ok, fail
+from .supported_formats import FORMAT_BY_EXTENSION, SOURCE_TYPE_BY_FORMAT
+
+logger = logging.getLogger(__name__)
+
+# ── Extension mapping ─────────────────────────────────────────────
+EXTENSION_MAP = {
+    ".pdf": "pdf",
+    ".epub": "ebook",
+    ".mobi": "ebook",
+    ".docx": "docx",
+    ".doc": "doc",
+    ".pptx": "pptx",
+    ".ppt": "ppt",
+    ".xlsx": "xlsx",
+    ".xls": "xls",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".txt": "text",
+    ".rst": "text",
+    ".adoc": "text",
+    ".csv": "text",
+    ".tsv": "text",
+    ".html": "html",
+    ".htm": "html",
+    ".json": "json",
+    ".vtt": "subtitle_transcript",
+    ".srt": "subtitle_transcript",
+    ".ass": "subtitle_transcript",
+    ".lrc": "subtitle_transcript",
+    ".mp3": "audio",
+    ".wav": "audio",
+    ".m4a": "audio",
+    ".aac": "audio",
+    ".flac": "audio",
+    ".mp4": "video",
+    ".mov": "video",
+    ".mkv": "video",
+    ".webm": "video",
+    ".png": "image",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".bmp": "image",
+    ".tiff": "image",
+    ".tif": "image",
+    ".webp": "image",
+    ".gif": "image",
+}
+
+# Source type mapping for pipeline
+SOURCE_TYPE_MAP = {
+    "pdf": "pdf_like",
+    "ebook": "pdf_like",
+    "docx": "pdf_like",
+    "doc": "pdf_like",
+    "xlsx": "pdf_like",
+    "xls": "pdf_like",
+    "pptx": "generic_block",
+    "ppt": "generic_block",
+    "markdown": "markdown_note",
+    "text": "generic_block",
+    "html": "generic_block",
+    "json": "generic_block",
+    "subtitle_transcript": "subtitle_transcript",
+    "audio": "generic_block",
+    "video": "generic_block",
+    "image": "pdf_like",
+}
+
+# ── Text quality analysis ─────────────────────────────────────────
+
+EXTENSION_MAP = FORMAT_BY_EXTENSION
+SOURCE_TYPE_MAP = SOURCE_TYPE_BY_FORMAT
+
+# Chinese character range
+CJK_RE = re.compile(r'[\u4e00-\u9fff\u3400-\u4dbf\U00020000-\U0002a6df]')
+# English letters and digits
+ALNUM_RE = re.compile(r'[a-zA-Z0-9]')
+# Control characters (excluding common whitespace)
+CONTROL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]')
+COMMON_CJK_RE = re.compile(r'[\u4e00-\u9fff]')
+COMMON_NON_CJK_RE = re.compile(r'[a-zA-Z0-9\s\u3000-\u303f.,;:!?()\-鈥擻[\]{}<>"\'/\\@#$%^&*+=|~`，。！？；：（）【】《》、]')
+# Common OCR confusion patterns
+OCR_AI_CONFUSION_RE = re.compile(r'\b(?:All in Al|Al编程|Al工具|A时代|Al使用|ClaudeCode|Google Al)\b')
+# Garbled text: long runs of non-CJK, non-ASCII, non-common-punctuation
+GARBLED_RE = re.compile(r'[^\u4e00-\u9fff\u3000-\u303fa-zA-Z0-9\s.,;:!?()\-—\[\]{}<>"\'/\\@#$%^&*+=|~`]{15,}')
+# QR code indicators in text
+QR_TEXT_RE = re.compile(r'(?:扫码|二维码|扫一扫|QR\s*code|qrcode)', re.IGNORECASE)
+# CTA indicators
+CTA_TEXT_RE = re.compile(r'(?:扫码(?:加入|入群)|添加.*服务官|免费领取.*体验卡|限时优惠|立即购买|点击链接)', re.IGNORECASE)
+
+
+def analyze_text_quality(text: str) -> dict:
+    """Analyze text quality metrics."""
+    if not text:
+        return {
+            "total_chars": 0,
+            "chinese_ratio": 0.0,
+            "alnum_ratio": 0.0,
+            "control_ratio": 0.0,
+            "garbled_ratio": 0.0,
+            "garbled_chars": 0,
+            "non_common_unicode_ratio": 0.0,
+            "replacement_char_ratio": 0.0,
+            "unreadable_text_ratio": 0.0,
+            "ocr_ai_confusion_count": 0,
+            "has_qr_text": False,
+            "has_cta_text": False,
+        }
+
+    total = len(text)
+    chinese_chars = len(CJK_RE.findall(text))
+    alnum_chars = len(ALNUM_RE.findall(text))
+    control_chars = len(CONTROL_RE.findall(text))
+    garbled_matches = GARBLED_RE.findall(text)
+    garbled_chars = sum(len(m) for m in garbled_matches)
+    non_common_unicode_chars = sum(
+        1
+        for ch in text
+        if ord(ch) > 127 and not COMMON_CJK_RE.match(ch) and not COMMON_NON_CJK_RE.match(ch)
+    )
+    replacement_chars = text.count("?") + text.count("\ufffd")
+    non_common_unicode_ratio = non_common_unicode_chars / total if total > 0 else 0.0
+    replacement_char_ratio = replacement_chars / total if total > 0 else 0.0
+    unreadable_text_ratio = max(
+        garbled_chars / total if total > 0 else 0.0,
+        non_common_unicode_ratio,
+        replacement_char_ratio if (chinese_chars + alnum_chars) / total < 0.2 else 0.0,
+    )
+    ocr_confusions = len(OCR_AI_CONFUSION_RE.findall(text))
+
+    return {
+        "total_chars": total,
+        "chinese_ratio": round(chinese_chars / total, 4) if total > 0 else 0.0,
+        "alnum_ratio": round(alnum_chars / total, 4) if total > 0 else 0.0,
+        "control_ratio": round(control_chars / total, 4) if total > 0 else 0.0,
+        "garbled_ratio": round(garbled_chars / total, 4) if total > 0 else 0.0,
+        "garbled_chars": garbled_chars,
+        "non_common_unicode_ratio": round(non_common_unicode_ratio, 4),
+        "replacement_char_ratio": round(replacement_char_ratio, 4),
+        "unreadable_text_ratio": round(unreadable_text_ratio, 4),
+        "ocr_ai_confusion_count": ocr_confusions,
+        "has_qr_text": bool(QR_TEXT_RE.search(text)),
+        "has_cta_text": bool(CTA_TEXT_RE.search(text)),
+    }
+
+
+def detect_text_profile(text: str, detected_format: str = "text") -> dict:
+    """Classify text shape without summarizing or rewriting it."""
+    headings = len(re.findall(r'^#{1,6}\s+', text, re.MULTILINE))
+    numbered_steps = len(re.findall(
+        r'^\s*(?:\d+[\.\)、)]\s+|第?[一二三四五六七八九十百千\d]+步[骤]?[：:、\.\s]|步骤\s*[一二三四五六七八九十百千\d]+[：:、\.\s])',
+        text,
+        re.MULTILINE,
+    ))
+    timestamp_lines = len(re.findall(r'^\s*(?:\d{1,2}:)?\d{1,2}:\d{2}(?:[.,]\d{1,3})?', text, re.MULTILINE))
+    speaker_lines = len(re.findall(r'^\s*[^:\n：]{1,24}[：:]\s+\S+', text, re.MULTILINE))
+    table_rows = len(re.findall(r'^\|.+\|$', text, re.MULTILINE))
+    chars = len(text)
+
+    tutorial_terms = ["步骤", "操作", "设置", "配置", "教程", "如何", "怎么", "实操", "案例", "prompt", "提示词"]
+    meeting_terms = ["会议", "讨论", "主持人", "嘉宾", "提问", "回答", "访谈"]
+    note_terms = ["笔记", "复盘", "心得", "思考", "总结"]
+    ebook_terms = ["目录", "第一章", "第二章", "前言", "附录"]
+
+    if headings >= 8 and chars > 12_000:
+        profile = "ebook_or_long_report"
+    elif detected_format == "subtitle_transcript" or timestamp_lines >= 3 or speaker_lines >= 8:
+        profile = "transcript"
+    elif numbered_steps >= 3 or any(term.lower() in text.lower() for term in tutorial_terms):
+        profile = "tutorial"
+    elif any(term in text for term in meeting_terms):
+        profile = "meeting_or_interview"
+    elif any(term in text for term in note_terms):
+        profile = "note"
+    elif any(term in text for term in ebook_terms) and chars > 12_000:
+        profile = "ebook_or_long_report"
+    elif chars < 4_000:
+        profile = "short_text"
+    else:
+        profile = "long_text"
+
+    return {
+        "text_profile": profile,
+        "char_count": chars,
+        "heading_count": headings,
+        "numbered_step_count": numbered_steps,
+        "timestamp_line_count": timestamp_lines,
+        "speaker_line_count": speaker_lines,
+        "table_row_count": table_rows,
+    }
+
+
+def analyze_pdf(input_path: str) -> dict:
+    """Analyze PDF file quality using PyMuPDF (fitz)."""
+    warnings = []
+    result = {
+        "page_count": 0,
+        "image_pages": 0,
+        "text_pages": 0,
+        "empty_pages": 0,
+        "total_text_length": 0,
+        "image_count": 0,
+        "text_layer_health": "unknown",
+        "is_scanned": False,
+        "is_garbled": False,
+        "needs_ocr": False,
+        "recommended_pipeline": "mineru_pipeline",
+    }
+
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        warnings.append("PyMuPDF not installed. PDF analysis limited. Install: pip install pymupdf")
+        # Try basic analysis with mineru's content extraction
+        result["text_layer_health"] = "unavailable"
+        result["warnings"] = warnings
+        return result
+
+    try:
+        doc = fitz.open(input_path)
+        result["page_count"] = len(doc)
+
+        image_pages = 0
+        text_pages = 0
+        empty_pages = 0
+        total_text = ""
+        image_count = 0
+        landscape_pages = 0
+        max_image_count_on_page = 0
+
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            if page.rect.width > page.rect.height:
+                landscape_pages += 1
+            text = page.get_text("text").strip()
+            images = page.get_images(full=True)
+            image_count += len(images)
+            max_image_count_on_page = max(max_image_count_on_page, len(images))
+
+            if not text and images:
+                image_pages += 1
+            elif text:
+                text_pages += 1
+                total_text += text + "\n"
+            else:
+                empty_pages += 1
+
+        result["image_pages"] = image_pages
+        result["text_pages"] = text_pages
+        result["empty_pages"] = empty_pages
+        result["total_text_length"] = len(total_text)
+        result["image_count"] = image_count
+        result["landscape_pages"] = landscape_pages
+        result["max_image_count_on_page"] = max_image_count_on_page
+        result["average_text_chars_per_text_page"] = round(len(total_text) / text_pages, 1) if text_pages else 0
+
+        # Analyze text quality
+        quality = analyze_text_quality(total_text)
+        result["text_quality"] = quality
+        if total_text.strip():
+            result.update(detect_text_profile(total_text, "pdf"))
+
+        # Determine text layer health
+        if text_pages == 0 and image_pages > 0:
+            result["text_layer_health"] = "no_text_layer"
+            result["pdf_subtype"] = "image_only_or_scanned"
+            result["is_scanned"] = True
+            result["needs_ocr"] = True
+            result["recommended_pipeline"] = "mineru_pipeline_ocr"
+        elif quality.get("unreadable_text_ratio", quality["garbled_ratio"]) > 0.25:
+            result["text_layer_health"] = "bad"
+            result["pdf_subtype"] = "garbled_text_layer"
+            result["is_garbled"] = True
+            result["needs_ocr"] = True
+            result["recommended_pipeline"] = "mineru_pipeline_ocr"
+            warnings.append(
+                "W_PDF_TEXT_LAYER_UNTRUSTED: "
+                f"unreadable text ratio {quality.get('unreadable_text_ratio', 0):.2%}"
+            )
+        elif quality["garbled_ratio"] > 0.08:
+            result["text_layer_health"] = "bad"
+            result["pdf_subtype"] = "garbled_text_layer"
+            result["is_garbled"] = True
+            result["needs_ocr"] = True
+            result["recommended_pipeline"] = "mineru_pipeline_ocr"
+            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: garbled ratio {quality['garbled_ratio']:.2%}")
+        elif quality["garbled_ratio"] > 0.03:
+            result["text_layer_health"] = "degraded"
+            result["pdf_subtype"] = "garbled_text_layer"
+            result["needs_ocr"] = True
+            result["recommended_pipeline"] = "mineru_pipeline_ocr"
+            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: garbled ratio {quality['garbled_ratio']:.2%}")
+        elif quality["chinese_ratio"] < 0.05 and result["page_count"] > 5:
+            result["text_layer_health"] = "low_content"
+            warnings.append("Low Chinese content ratio — may be scanned or non-Chinese document")
+        else:
+            result["text_layer_health"] = "good"
+            result["pdf_subtype"] = "text_layer"
+
+        # Check image page ratio
+        if result["page_count"] > 0:
+            image_page_ratio = image_pages / result["page_count"]
+            result["image_page_ratio"] = round(image_page_ratio, 4)
+            if image_page_ratio > 0.5:
+                result["needs_ocr"] = True
+                result["pdf_subtype"] = "image_heavy_mixed" if text_pages else "image_only_or_scanned"
+                if result["recommended_pipeline"] == "mineru_pipeline":
+                    result["recommended_pipeline"] = "mineru_pipeline_ocr"
+                    warnings.append(f"W_FORCE_OCR_RECOMMENDED: {image_page_ratio:.0%} pages are image-only")
+
+        # OCR AI confusion check
+        if quality["ocr_ai_confusion_count"] > 0:
+            warnings.append(f"W_OCR_AI_CONFUSION: {quality['ocr_ai_confusion_count']} AI/Al confusion patterns found")
+
+        doc.close()
+
+        if result["page_count"] > 0 and image_pages > 0 and text_pages > 0 and "pdf_subtype" not in result:
+            result["pdf_subtype"] = "mixed_text_image"
+        landscape_ratio = landscape_pages / result["page_count"] if result["page_count"] else 0
+        result["landscape_ratio"] = round(landscape_ratio, 4)
+        avg_chars = result["average_text_chars_per_text_page"]
+        slide_like_score = 0.0
+        if result["page_count"] >= 3:
+            if landscape_ratio >= 0.8:
+                slide_like_score += 0.45
+            if avg_chars and avg_chars < 900:
+                slide_like_score += 0.25
+            if image_count >= result["page_count"]:
+                slide_like_score += 0.2
+            if text_pages <= max(1, result["page_count"] * 0.25):
+                slide_like_score += 0.1
+        result["slide_like_score"] = round(min(slide_like_score, 1.0), 4)
+
+        if result["slide_like_score"] >= 0.65:
+            result["layout_profile"] = "slide_deck_or_ppt_export"
+        elif landscape_ratio >= 0.8:
+            result["layout_profile"] = "landscape_report"
+        elif image_pages / result["page_count"] > 0.5 if result["page_count"] else False:
+            result["layout_profile"] = "image_heavy_document"
+        else:
+            result["layout_profile"] = "document_pages"
+
+        if (
+            image_count >= result["page_count"]
+            and text_pages <= max(1, result["page_count"] * 0.2)
+            and landscape_ratio > 0.5
+        ):
+            result["pdf_subtype"] = "ppt_exported_or_scanned"
+        elif (
+            result.get("pdf_subtype") == "text_layer"
+            and result["layout_profile"] == "slide_deck_or_ppt_export"
+        ):
+            result["pdf_subtype"] = "ppt_exported_text_layer"
+
+        _apply_pdf_processing_strategy(result)
+
+    except Exception as e:
+        warnings.append(f"PDF analysis error: {e}")
+        result["text_layer_health"] = "error"
+
+    result["warnings"] = warnings
+    return result
+
+
+def _apply_pdf_processing_strategy(result: dict) -> None:
+    pdf_subtype = result.get("pdf_subtype", "unknown")
+    layout_profile = result.get("layout_profile", "unknown")
+    hints: list[str] = []
+
+    if result.get("needs_ocr"):
+        result["recommended_pipeline"] = "mineru_pipeline_ocr"
+        result["conversion_strategy"] = "mineru_ocr"
+        hints.append("Run OCR because the text layer is missing, image-heavy, or untrusted.")
+    elif pdf_subtype == "ppt_exported_text_layer":
+        result["recommended_pipeline"] = "pdf_text_layer"
+        result["conversion_strategy"] = "pdf_text_layer_slide_order"
+        result["split_strategy"] = "preserve_slide_or_page_order"
+        hints.append("Use the text layer but preserve slide/page order; do not treat this like a dense ebook.")
+    elif pdf_subtype == "mixed_text_image":
+        result["recommended_pipeline"] = "mineru_pipeline"
+        result["conversion_strategy"] = "mineru_mixed_text_image"
+        hints.append("Keep both extracted text and image evidence; review image-heavy blocks before deletion.")
+    else:
+        result["recommended_pipeline"] = "pdf_text_layer"
+        result["conversion_strategy"] = "pdf_text_layer"
+        hints.append("Use the existing text layer; OCR is not recommended by diagnosis.")
+
+    if "split_strategy" not in result:
+        result["split_strategy"] = (
+            "preserve_slide_or_page_order"
+            if layout_profile == "slide_deck_or_ppt_export"
+            else "content_structure"
+        )
+
+    if pdf_subtype in {"image_only_or_scanned", "ppt_exported_or_scanned"}:
+        hints.append("Expect OCR output; keep discarded text recoverable for manual review.")
+    if layout_profile == "slide_deck_or_ppt_export":
+        hints.append("Slides and report pages often contain sparse but important details; avoid over-aggressive cleanup.")
+
+    result["processing_hints"] = hints
+
+
+def analyze_markdown(input_path: str, detected_format: str | None = None) -> dict:
+    """Analyze text-like files that can be converted without OCR."""
+    warnings = []
+
+    if detected_format == "notebook":
+        try:
+            from .notebook import notebook_to_markdown
+            text = notebook_to_markdown(input_path)
+        except Exception as e:
+            return {"text_layer_health": "error", "warnings": [f"Cannot parse notebook: {e}"]}
+    else:
+        try:
+            text = Path(input_path).read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            for enc in ["utf-8-sig", "gbk", "gb2312", "latin-1"]:
+                try:
+                    text = Path(input_path).read_text(encoding=enc)
+                    warnings.append(f"Encoding: {enc} (not UTF-8)")
+                    break
+                except (UnicodeDecodeError, LookupError):
+                    continue
+            else:
+                return {"text_layer_health": "error", "warnings": ["Cannot decode file"]}
+
+    ext = Path(input_path).suffix.lower()
+    profile_input = _text_for_profile(text, detected_format or "text")
+    quality = analyze_text_quality(profile_input)
+
+    # Count headings
+    heading_re = re.compile(r'^#{1,6}\s+', re.MULTILINE)
+    heading_count = len(heading_re.findall(profile_input))
+
+    # Count code blocks
+    code_block_re = re.compile(r'^```[\s\S]*?^```', re.MULTILINE)
+    code_block_count = len(code_block_re.findall(profile_input))
+
+    # Count tables
+    table_re = re.compile(r'^\|.+\|$', re.MULTILINE)
+    table_row_count = len(table_re.findall(profile_input))
+
+    profile_format = detected_format or ("markdown" if ext in {".md", ".markdown"} else "text")
+
+    result = {
+        "page_count": 1,
+        "total_text_length": len(profile_input),
+        "heading_count": heading_count,
+        "code_block_count": code_block_count,
+        "table_row_count": table_row_count,
+        "text_quality": quality,
+        "text_layer_health": "good",
+        "needs_ocr": False,
+        "recommended_pipeline": "direct",
+        **detect_text_profile(profile_input, profile_format),
+    }
+    if detected_format == "code":
+        result["conversion_strategy"] = "direct_code"
+    elif detected_format == "notebook":
+        result["conversion_strategy"] = "notebook_json"
+
+    if quality["garbled_ratio"] > 0.05:
+        result["text_layer_health"] = "degraded"
+        warnings.append(f"High garbled ratio: {quality['garbled_ratio']:.2%}")
+
+    if quality["ocr_ai_confusion_count"] > 0:
+        warnings.append(f"W_OCR_AI_CONFUSION: {quality['ocr_ai_confusion_count']} patterns found")
+
+    result["warnings"] = warnings
+    return result
+
+
+def _text_for_profile(text: str, detected_format: str) -> str:
+    if detected_format == "html":
+        text = re.sub(r"(?is)<(script|style|nav|footer|header)\b[^>]*>.*?</\1>", "\n", text)
+        text = re.sub(r"(?is)<br\s*/?>", "\n", text)
+        text = re.sub(r"(?is)</(p|div|li|h[1-6]|tr|section|article)>", "\n", text)
+        text = re.sub(r"(?is)<[^>]+>", " ", text)
+        text = re.sub(r"[ \t]+", " ", text)
+    return text
+
+
+def analyze_audio_video(input_path: str, detected_format: str) -> dict:
+    return {
+        "page_count": 0,
+        "total_text_length": 0,
+        "text_layer_health": "unavailable",
+        "needs_ocr": False,
+        "recommended_pipeline": "provide_transcript_first",
+        "text_profile": detected_format,
+        "warnings": [
+            "Audio/video binary files are not transcribed in v1. Provide a local subtitle, transcript, or ASR text file."
+        ],
+    }
+
+
+def analyze_office(input_path: str, detected_format: str) -> dict:
+    """Choose the Office conversion route without mutating the input file."""
+    modern_office = {"docx", "pptx", "xlsx"}
+    if detected_format in modern_office:
+        if not zipfile.is_zipfile(input_path):
+            return {
+                "page_count": 0,
+                "text_layer_health": "invalid_container",
+                "needs_ocr": False,
+                "recommended_pipeline": "office_xml",
+                "conversion_strategy": "office_xml",
+                "warnings": [f"{detected_format} is not a valid Office Open XML package"],
+            }
+        return {
+            "page_count": 0,
+            "text_layer_health": "needs_conversion",
+            "needs_ocr": False,
+            "recommended_pipeline": "office_xml",
+            "conversion_strategy": "office_xml",
+            "warnings": [],
+        }
+
+    return {
+        "page_count": 0,
+        "text_layer_health": "needs_conversion",
+        "needs_ocr": False,
+        "recommended_pipeline": "mineru_pipeline",
+        "conversion_strategy": "mineru",
+        "warnings": [],
+    }
+
+
+def analyze_ebook(input_path: str, ext: str) -> dict:
+    if ext == ".epub":
+        try:
+            from .epub import analyze_epub
+            return analyze_epub(input_path)
+        except Exception as e:
+            return {
+                "page_count": 0,
+                "text_layer_health": "invalid_container",
+                "needs_ocr": False,
+                "recommended_pipeline": "epub_xhtml",
+                "conversion_strategy": "epub_xhtml",
+                "warnings": [f"EPUB analysis failed: {e}"],
+            }
+    return {
+        "page_count": 0,
+        "text_layer_health": "needs_conversion",
+        "needs_ocr": False,
+        "recommended_pipeline": "mineru_pipeline",
+        "conversion_strategy": "mineru",
+        "warnings": [],
+    }
+
+
+def run(data: dict) -> None:
+    """Entry point for diagnose command."""
+    input_path = data["input_path"]
+    output_root = data.get("output_root", ".")
+    override_source_type = data.get("source_type", "auto")
+
+    input_p = Path(input_path)
+    if not input_p.exists():
+        fail("E_INPUT_NOT_FOUND", f"Input file does not exist: {input_path}")
+
+    warnings = []
+
+    # File metadata
+    file_bytes = input_p.read_bytes()
+    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    file_size = len(file_bytes)
+    ext = input_p.suffix.lower()
+    detected_format = EXTENSION_MAP.get(ext, "unknown")
+
+    if detected_format == "unknown":
+        fail("E_UNSUPPORTED_TYPE", f"Unsupported file extension: {ext}")
+
+    # Determine source_type
+    if override_source_type and override_source_type != "auto":
+        source_type = override_source_type
+    else:
+        source_type = SOURCE_TYPE_MAP.get(detected_format, "generic_block")
+
+    # Format-specific analysis
+    analysis = {}
+    if detected_format == "pdf":
+        analysis = analyze_pdf(input_path)
+        warnings.extend(analysis.pop("warnings", []))
+    elif detected_format == "ebook":
+        analysis = analyze_ebook(input_path, ext)
+        warnings.extend(analysis.pop("warnings", []))
+    elif detected_format in ("markdown", "text", "subtitle_transcript", "html", "json", "code", "notebook"):
+        analysis = analyze_markdown(input_path, detected_format)
+        warnings.extend(analysis.pop("warnings", []))
+    elif detected_format in ("audio", "video"):
+        analysis = analyze_audio_video(input_path, detected_format)
+        warnings.extend(analysis.pop("warnings", []))
+    elif detected_format in ("docx", "doc", "xlsx", "xls", "pptx", "ppt"):
+        # Legacy Office defaults to MinerU; modern Office Open XML is overridden below.
+        analysis = {
+            "page_count": 0,
+            "text_layer_health": "needs_conversion",
+            "needs_ocr": False,
+            "recommended_pipeline": "mineru_pipeline",
+        }
+        if detected_format in ("docx", "pptx", "xlsx"):
+            analysis = analyze_office(input_path, detected_format)
+            warnings.extend(analysis.pop("warnings", []))
+        else:
+            analysis["conversion_strategy"] = "mineru"
+    elif detected_format == "image":
+        analysis = {
+            "page_count": 1,
+            "text_layer_health": "needs_ocr",
+            "needs_ocr": True,
+            "recommended_pipeline": "mineru_pipeline_ocr",
+        }
+    else:
+        analysis = {
+            "page_count": 0,
+            "text_layer_health": "unknown",
+            "needs_ocr": False,
+            "recommended_pipeline": "direct",
+        }
+
+    # Build output
+    result = {
+        "ok": True,
+        "file_id": file_hash,
+        "file_name": input_p.name,
+        "file_size": file_size,
+        "detected_format": detected_format,
+        "source_type": source_type,
+        "needs_ocr": analysis.get("needs_ocr", False),
+        "recommended_pipeline": analysis.get("recommended_pipeline", "direct"),
+        "warnings": warnings,
+        **analysis,
+    }
+    if not result.get("conversion_strategy"):
+        result["conversion_strategy"] = result.get("recommended_pipeline", "direct")
+
+    ok(data=result, warnings=warnings)
