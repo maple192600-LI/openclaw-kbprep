@@ -71,6 +71,16 @@ npm run plugin:validate
 npm test
 ```
 
+## Install From GitHub
+
+```bash
+openclaw plugins install git:github.com/maple192600-LI/openclaw-kbprep
+openclaw gateway restart
+openclaw plugins inspect openclaw-kbprep --runtime --json
+```
+
+This repository includes the compiled `dist/` runtime because OpenClaw managed installs require readable JavaScript runtime files for native plugins. Local dependency folders, local Python runtimes, raw source documents, and generated conversion outputs remain ignored.
+
 ## OpenClaw Plugin Lifecycle Checks
 
 OpenClaw discovers plugins from config/install metadata, then activates the entry module and registers tools at runtime.

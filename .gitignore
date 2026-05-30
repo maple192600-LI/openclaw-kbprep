@@ -1,7 +1,8 @@
 .kbprep/
 node_modules/
-dist/
 coverage/
+dist/**/*.test.js
+dist/**/*.test.d.ts
 
 *.log
 *.tmp
