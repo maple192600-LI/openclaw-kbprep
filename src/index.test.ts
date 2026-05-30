@@ -195,6 +195,71 @@ describe("openclaw-kbprep", () => {
     expect(quality.review_applied_at).toBeTypeOf("number");
   }, 30_000);
 
+  it("validates AI review patches and retries unsafe-only batches", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kbprep-plugin-ai-guard-"));
+    const inputPath = join(tempRoot, "raw.md");
+    const outputRoot = join(tempRoot, "out");
+    await writeFile(
+      inputPath,
+      [
+        "# Tutorial",
+        "",
+        "1. Open the dashboard and set threshold=0.8.",
+        "",
+        "This is useful context that should not be rewritten.",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    let runCalls = 0;
+    const tools = registerTools({
+      runtime: {
+        subagent: {
+          run: async () => {
+            runCalls += 1;
+            return { runId: `review-run-${runCalls}` };
+          },
+          waitForRun: async () => ({ status: "ok" }),
+          getSessionMessages: async () => ({
+            messages: [
+              {
+                content: JSON.stringify(runCalls === 1
+                  ? [{ op: "replace", path: "/blocks/b_000000/text", value: "summary" }]
+                  : [{ op: "replace", path: "/blocks/b_000000/reason", value: "safe classification metadata only" }]),
+              },
+            ],
+          }),
+        },
+      },
+    });
+    const prepare = tools.find((tool) => tool.name === "kbprep_prepare");
+    expect(prepare).toBeDefined();
+
+    const result = await prepare!.execute(
+      "test-call-ai-guard",
+      {
+        input_path: inputPath,
+        output_root: outputRoot,
+        mode: "ai_review",
+        force: true,
+        language: "zh",
+      },
+      undefined,
+      undefined,
+    );
+
+    const payload = unwrapJsonResult(result);
+    expect(payload.ok).toBe(true);
+    expect(runCalls).toBe(2);
+    expect(payload.data.ai_review.applied).toBe(1);
+    expect(payload.data.ai_review.patch_ops).toBe(1);
+    expect(JSON.stringify(payload.warnings ?? [])).toContain("W_LLM_REVIEW_PATCH_OP_REJECTED");
+
+    const cleaned = await readFile(payload.data.latest_outputs.cleaned_md, "utf-8");
+    expect(cleaned).toContain("threshold=0.8");
+    expect(cleaned).not.toContain("summary");
+  }, 30_000);
+
   it("reviews oversized long-document review packs in batches instead of skipping AI review", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "kbprep-plugin-ai-long-"));
     const inputPath = join(tempRoot, "long.md");

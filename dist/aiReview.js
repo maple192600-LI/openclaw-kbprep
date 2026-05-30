@@ -2,6 +2,9 @@ import { readFile } from "node:fs/promises";
 import { callWorker } from "./worker.js";
 const REVIEW_PACK_MAX_CHARS = 80_000;
 const REVIEW_PACK_BATCH_TARGET_CHARS = 60_000;
+const AI_REVIEW_MAX_ATTEMPTS = 2;
+const AI_REVIEW_ALLOWED_FIELDS = new Set(["status", "risk_tags", "reason", "confidence"]);
+const AI_REVIEW_ALLOWED_STATUSES = new Set(["keep", "discard", "evidence", "review"]);
 export async function maybeRunAiReview(result, params, config, context, opts) {
     if (params.mode !== "ai_review" || !result.ok) {
         return result;
@@ -25,34 +28,54 @@ export async function maybeRunAiReview(result, params, config, context, opts) {
     }
     const combinedPatch = [];
     const aiWarnings = [];
+    let failedBatches = 0;
     for (const [index, batch] of batches.entries()) {
-        const sessionKey = `kbprep-review:${context.toolCallId}:${Date.now()}:${index + 1}`;
-        const message = buildReviewPrompt(batch, index + 1, batches.length);
-        const run = await subagent.run({
-            sessionKey,
-            message,
-            provider: params.ai_review_provider ?? config.ai_review_provider,
-            model: params.ai_review_model ?? config.ai_review_model,
-            extraSystemPrompt: AI_REVIEW_SYSTEM_PROMPT,
-            lane: "kbprep-review",
-            lightContext: true,
-            deliver: false,
-            idempotencyKey: `${context.toolCallId}:${index + 1}`,
-        });
-        const waited = await subagent.waitForRun({ runId: run.runId, timeoutMs: opts.timeoutMs });
-        if (waited.status !== "ok") {
-            aiWarnings.push(`W_LLM_REVIEW_BATCH_SKIPPED: batch ${index + 1}/${batches.length} ${waited.status}${waited.error ? ` (${waited.error})` : ""}.`);
-            continue;
+        let accepted = false;
+        for (let attempt = 1; attempt <= AI_REVIEW_MAX_ATTEMPTS; attempt += 1) {
+            const sessionKey = `kbprep-review:${context.toolCallId}:${Date.now()}:${index + 1}:${attempt}`;
+            const message = buildReviewPrompt(batch, index + 1, batches.length, attempt);
+            const run = await subagent.run({
+                sessionKey,
+                message,
+                provider: params.ai_review_provider ?? config.ai_review_provider,
+                model: params.ai_review_model ?? config.ai_review_model,
+                extraSystemPrompt: AI_REVIEW_SYSTEM_PROMPT,
+                lane: "kbprep-review",
+                lightContext: true,
+                deliver: false,
+                idempotencyKey: `${context.toolCallId}:${index + 1}:${attempt}`,
+            });
+            const waited = await subagent.waitForRun({ runId: run.runId, timeoutMs: opts.timeoutMs });
+            if (waited.status !== "ok") {
+                aiWarnings.push(`W_LLM_REVIEW_BATCH_ATTEMPT_FAILED: batch ${index + 1}/${batches.length} attempt ${attempt}/${AI_REVIEW_MAX_ATTEMPTS} ${waited.status}${waited.error ? ` (${waited.error})` : ""}.`);
+                continue;
+            }
+            const messages = await subagent.getSessionMessages({ sessionKey, limit: 20 });
+            const patch = extractJsonPatch(messages.messages);
+            if (!patch) {
+                aiWarnings.push(`W_LLM_REVIEW_BATCH_ATTEMPT_FAILED: batch ${index + 1}/${batches.length} attempt ${attempt}/${AI_REVIEW_MAX_ATTEMPTS} did not return a JSON Patch array.`);
+                continue;
+            }
+            const validation = validateAiReviewPatch(patch);
+            if (validation.rejected.length) {
+                aiWarnings.push(formatRejectedPatchWarning(index + 1, batches.length, attempt, validation.rejected));
+            }
+            if (validation.valid.length) {
+                combinedPatch.push(...validation.valid);
+                accepted = true;
+                break;
+            }
+            if (patch.length === 0) {
+                accepted = true;
+                break;
+            }
         }
-        const messages = await subagent.getSessionMessages({ sessionKey, limit: 20 });
-        const patch = extractJsonPatch(messages.messages);
-        if (!patch) {
-            aiWarnings.push(`W_LLM_REVIEW_BATCH_SKIPPED: batch ${index + 1}/${batches.length} did not return a JSON Patch array.`);
-            continue;
+        if (!accepted) {
+            failedBatches += 1;
+            aiWarnings.push(`W_LLM_REVIEW_BATCH_SKIPPED: batch ${index + 1}/${batches.length} did not produce any safe patch operations.`);
         }
-        combinedPatch.push(...patch);
     }
-    if (combinedPatch.length === 0 && aiWarnings.length === batches.length) {
+    if (combinedPatch.length === 0 && failedBatches === batches.length) {
         return {
             ...result,
             warnings: [...(result.warnings ?? []), ...aiWarnings, "W_LLM_REVIEW_SKIPPED: all AI review batches failed."],
@@ -98,17 +121,19 @@ export async function maybeRunAiReview(result, params, config, context, opts) {
         warnings: [...(result.warnings ?? []), ...aiWarnings, ...(applied.warnings ?? [])],
     };
 }
-function buildReviewPrompt(reviewPack, batchNumber = 1, batchCount = 1) {
+function buildReviewPrompt(reviewPack, batchNumber = 1, batchCount = 1, attempt = 1) {
     return [
         `Review this kbprep review_pack.json batch ${batchNumber}/${batchCount}.`,
         "Return ONLY an RFC 6902 JSON Patch array.",
-        "Allowed fields are status, risk_tags, reason, confidence.",
+        "Allowed patch paths must be exactly /blocks/{block_id}/status, /blocks/{block_id}/risk_tags, /blocks/{block_id}/reason, or /blocks/{block_id}/confidence.",
+        "Allowed ops: replace status/reason/confidence/risk_tags, or add a single risk_tags string.",
         "Allowed statuses are keep, discard, evidence, review.",
         "Never rewrite text. Never summarize. Never discard steps, prompts, code, tables, tool names, numbers, parameters, links, or concrete examples.",
         "If context is insufficient, set status to review.",
+        attempt > 1 ? "Previous response was invalid or unsafe. Return a valid patch array only, or [] if no safe change is needed." : "",
         "",
         reviewPack,
-    ].join("\n");
+    ].filter(Boolean).join("\n");
 }
 function buildReviewBatches(reviewPack) {
     if (reviewPack.length <= REVIEW_PACK_MAX_CHARS)
@@ -168,6 +193,71 @@ function extractJsonPatch(messages) {
         }
     }
     return null;
+}
+function validateAiReviewPatch(patch) {
+    const valid = [];
+    const rejected = [];
+    for (const item of patch) {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+            rejected.push("operation is not an object");
+            continue;
+        }
+        const op = item;
+        const opType = op.op;
+        const path = op.path;
+        const value = op.value;
+        if (opType !== "replace" && opType !== "add") {
+            rejected.push(`unsupported op ${String(opType)}`);
+            continue;
+        }
+        if (typeof path !== "string") {
+            rejected.push("path must be a string");
+            continue;
+        }
+        const parts = path.split("/").filter(Boolean);
+        if (parts.length !== 3 || parts[0] !== "blocks") {
+            rejected.push(`invalid path ${path}`);
+            continue;
+        }
+        const field = parts[2];
+        if (!AI_REVIEW_ALLOWED_FIELDS.has(field)) {
+            rejected.push(`field ${field} is not allowed`);
+            continue;
+        }
+        const valueError = validateAiReviewPatchValue(opType, field, value);
+        if (valueError) {
+            rejected.push(valueError);
+            continue;
+        }
+        valid.push(item);
+    }
+    return { valid, rejected };
+}
+function validateAiReviewPatchValue(opType, field, value) {
+    if (field === "risk_tags" && opType === "add") {
+        return typeof value === "string" ? null : "risk_tags add value must be a string";
+    }
+    if (opType !== "replace") {
+        return `add is not supported for field ${field}`;
+    }
+    if (field === "status") {
+        return typeof value === "string" && AI_REVIEW_ALLOWED_STATUSES.has(value) ? null : `invalid status ${String(value)}`;
+    }
+    if (field === "risk_tags") {
+        return Array.isArray(value) && value.every((item) => typeof item === "string") ? null : "risk_tags replace value must be a string array";
+    }
+    if (field === "reason") {
+        return typeof value === "string" ? null : "reason must be a string";
+    }
+    if (field === "confidence") {
+        return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1 ? null : "confidence must be a number between 0 and 1";
+    }
+    return `field ${field} is not allowed`;
+}
+function formatRejectedPatchWarning(batchNumber, batchCount, attempt, rejected) {
+    const shown = rejected.slice(0, 3).join("; ");
+    const suffix = rejected.length > 3 ? `; ${rejected.length - 3} more` : "";
+    return `W_LLM_REVIEW_PATCH_OP_REJECTED: batch ${batchNumber}/${batchCount} attempt ${attempt}/${AI_REVIEW_MAX_ATTEMPTS} rejected ${rejected.length} unsafe op(s): ${shown}${suffix}.`;
 }
 function stringifyMessage(message) {
     if (typeof message === "string")
