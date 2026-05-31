@@ -29,9 +29,9 @@ Read-only runtime readiness check before conversion. It reports:
 - MinerU availability and version for PDF/Office/image conversion.
 - Device mode, GPU/CPU hints, model-cache status, memory, disk space, and workspace write permission.
 
-Always check `python_executable`, `mineru_path`, `torch`, `torch_cuda_available`, `torch_cuda_version`, `torch_device_count`, and `mineru_device` before a heavy PDF/Office run. If the user expects GPU but preflight shows CPU torch, set plugin config `python_path` to the Python executable from the user's GPU environment.
+Always check `python_executable`, `mineru_path`, `torch`, `torch_cuda_available`, `torch_cuda_version`, `torch_device_count`, and `mineru_device` before a heavy PDF/Office run. In normal OpenClaw use, `python_executable` must point to the plugin-local `.kbprep/venv` runtime. If the user expects GPU but preflight shows CPU torch, rerun setup/preflight so the plugin-local venv installs CUDA torch, or set `device_override="cpu"` when GPU is not wanted.
 
-Runtime selection order: explicit `python_path`, bundled worker venv, nearest `.kbprep/venv`, auto-discovered `~/.openclaw/workspace*/.kbprep/venv`, then system Python fallback. A valid kbprep venv must contain a MinerU executable beside its Python executable.
+Runtime rule: the plugin creates and runs its own `.kbprep/venv` inside the plugin directory. `python_path` is only an optional bootstrap interpreter for creating that venv; it is not the dependency runtime. The worker must resolve MinerU beside the plugin-local venv Python and must not fall back to a system-wide MinerU or unrelated Python environment.
 
 If full conversion dependencies are missing, text-like files may still work, but PDF/Office/image conversion should be treated as not ready until preflight is clean enough for the intended file type.
 
