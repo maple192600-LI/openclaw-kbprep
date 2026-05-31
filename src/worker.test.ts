@@ -219,14 +219,17 @@ function makeOfficeFixtures(docxPath: string, pptxPath: string, xlsxPath: string
 function makeEpubFixture(epubPath: string) {
   runPython(
     [
-      "import sys, zipfile",
+      "import base64, sys, zipfile",
       "epub_path = sys.argv[1]",
+      "png1x1 = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=')",
       "files = {",
       "  'mimetype': 'application/epub+zip',",
       "  'META-INF/container.xml': '''<?xml version=\"1.0\"?><container version=\"1.0\" xmlns=\"urn:oasis:names:tc:opendocument:xmlns:container\"><rootfiles><rootfile full-path=\"OEBPS/content.opf\" media-type=\"application/oebps-package+xml\"/></rootfiles></container>''',",
-      "  'OEBPS/content.opf': '''<?xml version=\"1.0\"?><package version=\"3.0\" xmlns=\"http://www.idpf.org/2007/opf\"><manifest><item id=\"c1\" href=\"chapter1.xhtml\" media-type=\"application/xhtml+xml\"/><item id=\"c2\" href=\"chapter2.xhtml\" media-type=\"application/xhtml+xml\"/></manifest><spine><itemref idref=\"c1\"/><itemref idref=\"c2\"/></spine></package>''',",
+      "  'OEBPS/content.opf': '''<?xml version=\"1.0\"?><package version=\"3.0\" xmlns=\"http://www.idpf.org/2007/opf\"><manifest><item id=\"c1\" href=\"chapter1.xhtml\" media-type=\"application/xhtml+xml\"/><item id=\"c2\" href=\"chapter2.xhtml\" media-type=\"application/xhtml+xml\"/><item id=\"c3\" href=\"links.xhtml\" media-type=\"application/xhtml+xml\"/><item id=\"img1\" href=\"images/step.png\" media-type=\"image/png\"/></manifest><spine><itemref idref=\"c1\"/><itemref idref=\"c2\"/><itemref idref=\"c3\"/></spine></package>''',",
       "  'OEBPS/chapter1.xhtml': '''<html xmlns=\"http://www.w3.org/1999/xhtml\"><body><h1>第一章 工具准备</h1><p>第一步：打开 OpenClaw 后台，把 threshold=0.8，并记录 failure_reason=timeout。</p><p>这一步必须保留工具名、参数和失败原因。</p></body></html>''',",
       "  'OEBPS/chapter2.xhtml': '''<html xmlns=\"http://www.w3.org/1999/xhtml\"><body><h1>第二章 案例复盘</h1><p>案例：账号设置里出现 retry_count=3 时，需要记录限制条件，不能总结成一句话。</p><p>扫码加入社群领取体验卡。</p></body></html>''',",
+      "  'OEBPS/links.xhtml': '''<html xmlns=\"http://www.w3.org/1999/xhtml\"><body><h1>EPUB Assets</h1><p>Tool link: <a href=\"https://example.com/epub-tool\">open tool</a></p><p><img src=\"images/step.png\" alt=\"EPUB screenshot\"/></p></body></html>''',",
+      "  'OEBPS/images/step.png': png1x1,",
       "}",
       "with zipfile.ZipFile(epub_path, 'w') as z:",
       "    for name, content in files.items():",
@@ -1815,6 +1818,10 @@ describe("kbprep worker pipeline", () => {
 
       expect(conversionReport.converter).toBe("epub_xhtml");
       expect(conversionReport.diagnosed_strategy).toBe("epub_xhtml");
+      expect(converted).toContain("[open tool](https://example.com/epub-tool)");
+      expect(converted).toContain("![EPUB screenshot](images/epub/OEBPS/images/step.png)");
+      expect(conversionReport.mineru_artifacts.epub_image_assets.copied_count).toBe(1);
+      expect(existsSync(path.join(outputRoot, "images", "epub", "OEBPS", "images", "step.png"))).toBe(true);
       expect(converted.indexOf("# 第一章 工具准备")).toBeLessThan(converted.indexOf("# 第二章 案例复盘"));
       expect(cleaned).toContain("threshold=0.8");
       expect(cleaned).toContain("failure_reason=timeout");

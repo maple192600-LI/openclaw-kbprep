@@ -201,7 +201,7 @@ def run(data: dict) -> None:
         elif ext in EPUB_EXTENSIONS:
             _validate_convertible_container(input_p)
             from .epub import convert_epub
-            result, epub_warnings = convert_epub(input_p, converted_path)
+            result, epub_warnings = convert_epub(input_p, converted_path, run_dir)
             mineru_artifacts = result
             warnings.extend(epub_warnings)
             _stderr_log("info", "convert", "EPUB XHTML converted directly")
