@@ -50,6 +50,8 @@ Single-file conversion and cleaning pipeline.
 
 For converter-backed formats such as PDF, Word, PPT, Excel, EPUB, and images, the plugin first preserves the original file, then validates obvious container problems before invoking the heavy converter. A corrupted or mislabeled `.docx`, `.pptx`, `.xlsx`, or `.epub` fails with `E_CONVERT_INPUT_INVALID` and must not publish `cleaned.md` or `latest.json`.
 
+For saved HTML, Markdown notes, modern Office XML, and EPUB sources, image references are not treated as disposable decoration. Local or embedded image assets should be copied into `images/` and the Markdown should point at those portable paths. Links in HTML/EPUB should remain Markdown links.
+
 Modes:
 
 - `rules_only`: deterministic conversion and conservative cleaning.
@@ -96,6 +98,7 @@ Each successful run writes direct-use files at the top level and keeps the full 
   cleaned.md
   discarded.md
   review_needed.md
+  images/
   audit.md
   quality_report.json
   parts/
@@ -109,6 +112,7 @@ Each successful run writes direct-use files at the top level and keeps the full 
     cleaned.md
     discarded.md
     review_needed.md
+    images/
     evidence/
     chunks/
     parts/

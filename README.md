@@ -24,6 +24,7 @@ Expected output:
 - `cleaned.md`: final readable Markdown
 - `discarded.md`: removed pollution with reasons
 - `review_needed.md`: uncertain content for manual review
+- `images/`: copied local or embedded image assets referenced by the Markdown output
 - `quality_report.json`: retention and quality checks
 
 Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when you want an AI or human to review uncertain blocks. Use `mode="ai_review"` only when OpenClaw subagents are available and you accept the extra model call.
@@ -44,6 +45,8 @@ Batch mode is conservative with heavy conversion files: PDF, image, MOBI, and le
 It also includes `output_retention`, which checks that links, parameter assignments, code blocks, and table blocks from kept/review/evidence blocks appear in their rendered destination: `cleaned.md`, `review_needed.md`, or `evidence/marketing_pages.md`. Missing rendered detail signals are strict QA failures.
 
 GitHub-style source and config files such as `.py`, `.js`, `.ts`, `.sh`, `.ps1`, `.sql`, `.yaml`, `.toml`, and `.ini` are handled as direct code inputs. The plugin wraps the original file in a fenced Markdown code block so code, parameters, links, and failure-handling details stay intact.
+
+Saved HTML pages are converted with visible headings, paragraphs, lists, links, and image references preserved. Local HTML images are copied into `images/` and rewritten to portable Markdown paths.
 
 Jupyter notebooks (`.ipynb`) are handled as structured local source files. Markdown cells are kept as Markdown, code cells are kept in fenced code blocks using the notebook language when available, and text outputs are preserved under per-cell output sections so tutorial parameters, examples, errors, and results remain readable.
 
@@ -87,7 +90,9 @@ Internal PDF page markers are kept as block/page metadata for traceability, but 
 
 When a useful source/cover block also contains standalone promotional lines such as public-account follow prompts, companion-video ads, or update-channel notices, those lines are split into `discarded.md` while the rest of the source metadata and tutorial body stays in `cleaned.md`.
 
-EPUB routing is also lightweight. EPUB files are extracted from their spine-ordered XHTML/HTML chapters into Markdown with headings, lists, paragraphs, and table-like text preserved. MOBI remains on the heavy conversion route.
+Modern Office XML files are converted locally when heavy conversion is unnecessary. Word/PPT/Excel text and tables are preserved, PPTX slide order is retained, and embedded DOCX/PPTX images are copied into `images/office/...` with Markdown image references.
+
+EPUB routing is also lightweight. EPUB files are extracted from their spine-ordered XHTML/HTML chapters into Markdown with headings, lists, links, images, paragraphs, and table-like text preserved. Embedded EPUB images are copied into `images/epub/...`; MOBI remains on the heavy conversion route.
 
 For large PDF/PPT-style conversions, set plugin config `mineru_timeout_seconds` when the default 1140 seconds is too short or too long for your machine. If MinerU times out, `prepare` returns `E_TIMEOUT` and keeps `original/`, `diagnosis_report.json`, and `error_report.json` for review.
 
