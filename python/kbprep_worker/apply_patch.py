@@ -276,6 +276,15 @@ def _publish_latest_outputs(run_p: Path, output_root: Path) -> dict:
     else:
         dst_parts.mkdir(parents=True, exist_ok=True)
 
+    src_images = run_p / "images"
+    dst_images = output_root / "images"
+    if dst_images.exists():
+        shutil.rmtree(dst_images)
+    if src_images.exists():
+        shutil.copytree(src_images, dst_images)
+    else:
+        dst_images.mkdir(parents=True, exist_ok=True)
+
     return {
         "converted_md": str(output_root / "converted.md"),
         "diagnosis_report": str(output_root / "diagnosis_report.json"),
@@ -287,6 +296,7 @@ def _publish_latest_outputs(run_p: Path, output_root: Path) -> dict:
         "conversion_report": str(output_root / "conversion_report.json"),
         "audit_md": str(output_root / "audit.md"),
         "parts_dir": str(output_root / "parts"),
+        "images_dir": str(output_root / "images"),
         "review_pack": str(output_root / "review_pack.json"),
     }
 

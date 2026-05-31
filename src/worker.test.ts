@@ -1941,6 +1941,73 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("copies local Markdown image assets into run and latest outputs", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-md-assets-"));
+    try {
+      const sourceDir = path.join(root, "source");
+      const outputRoot = path.join(root, "out");
+      const assetsDir = path.join(sourceDir, "assets");
+      const imagesDir = path.join(sourceDir, "images");
+      mkdirSync(assetsDir, { recursive: true });
+      mkdirSync(imagesDir, { recursive: true });
+      const png1x1 = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+        "base64",
+      );
+      writeFileSync(path.join(assetsDir, "step.png"), png1x1);
+      writeFileSync(path.join(assetsDir, "chart.png"), png1x1);
+      writeFileSync(path.join(imagesDir, "result.png"), png1x1);
+
+      const inputPath = path.join(sourceDir, "note.md");
+      writeFileSync(
+        inputPath,
+        [
+          "# 操作截图",
+          "",
+          "步骤 1：打开后台，把 threshold=0.8 填到配置项。",
+          "![步骤截图](assets/step.png)",
+          "",
+          "步骤 2：检查结果图，确认参数没有丢。",
+          "![[assets/chart.png]]",
+          "",
+          "![结果图](images/result.png)",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const result = runWorker("prepare", {
+        input_path: inputPath,
+        output_root: outputRoot,
+        profile: "standard",
+        mode: "rules_only",
+        language: "zh",
+        source_type: "auto",
+        splitter: "auto",
+        force: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const latest = result.data.latest_outputs;
+      const converted = readFileSync(latest.converted_md, "utf8");
+      const cleaned = readFileSync(latest.cleaned_md, "utf8");
+      const report = JSON.parse(readFileSync(latest.quality_report, "utf8"));
+
+      expect(converted).toContain("![步骤截图](images/assets/step.png)");
+      expect(converted).toContain("![](images/assets/chart.png)");
+      expect(converted).toContain("![结果图](images/result.png)");
+      expect(converted).not.toContain("images/images/result.png");
+      expect(cleaned).toContain("threshold=0.8");
+      expect(existsSync(path.join(result.data.run_dir, "images", "assets", "step.png"))).toBe(true);
+      expect(existsSync(path.join(outputRoot, "images", "assets", "step.png"))).toBe(true);
+      expect(existsSync(path.join(outputRoot, "images", "assets", "chart.png"))).toBe(true);
+      expect(existsSync(path.join(outputRoot, "images", "result.png"))).toBe(true);
+      expect(report.image_retention.missing_file_count).toBe(0);
+      expect(report.strict_errors).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("fails prepare when strict quality gates fail instead of publishing latest outputs", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-strict-gate-"));
     try {

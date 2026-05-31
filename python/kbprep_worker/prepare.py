@@ -21,6 +21,7 @@ import time
 import zipfile
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote
 
 from . import __version__
 from .envelope import ok, fail
@@ -30,6 +31,8 @@ from .supported_formats import (
     DIRECT_EXTENSIONS,
     EPUB_EXTENSIONS,
     FORMAT_BY_EXTENSION,
+    IMAGE_EXTENSIONS,
+    MARKDOWN_EXTENSIONS,
     MEDIA_EXTENSIONS,
     NOTEBOOK_EXTENSIONS,
     OFFICE_XML_EXTENSIONS,
@@ -173,6 +176,14 @@ def run(data: dict) -> None:
 
         if ext in direct_exts:
             text = _read_direct_source(input_p)
+            if ext in MARKDOWN_EXTENSIONS:
+                text, local_image_artifacts = _copy_local_markdown_image_assets(
+                    text=text,
+                    input_path=input_p,
+                    run_dir=run_dir,
+                )
+                mineru_artifacts.update(local_image_artifacts)
+                warnings.extend(local_image_artifacts.get("warnings", []))
             converted_path.write_text(text, encoding="utf-8")
             _stderr_log("info", "convert", "Text-like file normalized directly")
         elif ext in office_xml_exts:
@@ -491,6 +502,7 @@ def _latest_output_paths(root_p: Path) -> dict:
         "conversion_report": str(root_p / "conversion_report.json"),
         "audit_md": str(root_p / "audit.md"),
         "parts_dir": str(root_p / "parts"),
+        "images_dir": str(root_p / "images"),
         "review_pack": str(root_p / "review_pack.json"),
     }
 
@@ -634,6 +646,15 @@ def _publish_latest_outputs(run_dir: Path, root_p: Path) -> dict:
         shutil.copytree(src_parts, dst_parts)
     else:
         dst_parts.mkdir(parents=True, exist_ok=True)
+
+    src_images = run_dir / "images"
+    dst_images = root_p / "images"
+    if dst_images.exists():
+        shutil.rmtree(dst_images)
+    if src_images.exists():
+        shutil.copytree(src_images, dst_images)
+    else:
+        dst_images.mkdir(parents=True, exist_ok=True)
 
     return _latest_output_paths(root_p)
 
@@ -783,6 +804,129 @@ def _copy_mineru_image_assets(source_md: Path, run_dir: Path, mineru_result: dic
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(str(src), str(dst))
             copied.add(dst)
+
+
+def _copy_local_markdown_image_assets(text: str, input_path: Path, run_dir: Path) -> tuple[str, dict]:
+    """Copy local Markdown/Obsidian image refs into run_dir/images and rewrite refs."""
+    source_root = input_path.parent.resolve()
+    target_root = run_dir / "images"
+    copied: list[str] = []
+    missing: list[str] = []
+    skipped: list[str] = []
+    warnings: list[str] = []
+
+    def rewrite_standard(match: re.Match) -> str:
+        alt = match.group(1)
+        raw_target = match.group(2)
+        rewritten = _copy_one_local_markdown_image(
+            raw_target=raw_target,
+            source_root=source_root,
+            target_root=target_root,
+            copied=copied,
+            missing=missing,
+            skipped=skipped,
+        )
+        if not rewritten:
+            return match.group(0)
+        return f"![{alt}]({rewritten})"
+
+    def rewrite_obsidian(match: re.Match) -> str:
+        raw_target = match.group(1).split("|", 1)[0].strip()
+        if not _looks_like_image_reference(raw_target):
+            return match.group(0)
+        rewritten = _copy_one_local_markdown_image(
+            raw_target=raw_target,
+            source_root=source_root,
+            target_root=target_root,
+            copied=copied,
+            missing=missing,
+            skipped=skipped,
+        )
+        if not rewritten:
+            return match.group(0)
+        return f"![]({rewritten})"
+
+    text = re.sub(r"!\[([^\]]*)\]\(([^)\n]+)\)", rewrite_standard, text)
+    text = re.sub(r"!\[\[([^\]\n]+)\]\]", rewrite_obsidian, text)
+
+    if missing:
+        warnings.append(f"W_LOCAL_IMAGE_MISSING: {len(missing)} local Markdown image references were not found")
+    if skipped:
+        warnings.append(
+            "W_LOCAL_IMAGE_SKIPPED: "
+            f"{len(skipped)} local Markdown image references were outside the source folder or unsupported"
+        )
+
+    return text, {
+        "local_image_assets": {
+            "copied_count": len(set(copied)),
+            "copied": sorted(set(copied))[:50],
+            "missing_count": len(missing),
+            "missing": missing[:50],
+            "skipped_count": len(skipped),
+            "skipped": skipped[:50],
+        },
+        "warnings": warnings,
+    }
+
+
+def _copy_one_local_markdown_image(
+    raw_target: str,
+    source_root: Path,
+    target_root: Path,
+    copied: list[str],
+    missing: list[str],
+    skipped: list[str],
+) -> str | None:
+    path_text = _markdown_image_path_part(raw_target)
+    if not path_text or _is_nonlocal_markdown_image(path_text):
+        return None
+    if not _looks_like_image_reference(path_text):
+        skipped.append(path_text)
+        return None
+
+    decoded = unquote(path_text).replace("\\", "/").split("?", 1)[0].split("#", 1)[0]
+    source_path = (source_root / decoded).resolve()
+    try:
+        rel = source_path.relative_to(source_root)
+    except ValueError:
+        skipped.append(path_text)
+        return None
+
+    if not source_path.is_file():
+        missing.append(path_text)
+        return None
+
+    safe_parts = [part for part in rel.parts if part not in {"", ".", ".."}]
+    if safe_parts and safe_parts[0].lower() == "images":
+        safe_parts = safe_parts[1:]
+    if not safe_parts:
+        skipped.append(path_text)
+        return None
+    safe_rel = Path(*safe_parts)
+    target_path = target_root / safe_rel
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    if not target_path.exists():
+        shutil.copy2(str(source_path), str(target_path))
+    rewritten = "images/" + safe_rel.as_posix()
+    copied.append(rewritten)
+    return rewritten
+
+
+def _markdown_image_path_part(raw_target: str) -> str:
+    target = raw_target.strip()
+    if target.startswith("<") and ">" in target:
+        return target[1:target.index(">")].strip()
+    return re.sub(r"\s+(?:\"[^\"]*\"|'[^']*'|\([^)]+\))\s*$", "", target).strip()
+
+
+def _is_nonlocal_markdown_image(path_text: str) -> bool:
+    return bool(re.match(r"^(?:https?:)?//|^data:|^mailto:|^#", path_text, re.IGNORECASE))
+
+
+def _looks_like_image_reference(path_text: str) -> bool:
+    clean = path_text.split("?", 1)[0].split("#", 1)[0]
+    return Path(clean).suffix.lower() in IMAGE_EXTENSIONS
 
 
 def _maybe_fallback_pdf_text_layer_to_mineru(
