@@ -791,6 +791,7 @@ def _pdf_text_layer_output_needs_ocr(quality: dict) -> bool:
         and (
             quality.get("unreadable_text_ratio", 0) > 0.08
             or quality.get("garbled_ratio", 0) > 0.08
+            or quality.get("mojibake_ratio", 0) > 0.08
             or quality.get("replacement_char_ratio", 0) > 0.08
         )
     )

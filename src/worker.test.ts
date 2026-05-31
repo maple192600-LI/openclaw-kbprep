@@ -229,6 +229,21 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("detects Chinese mojibake from broken PDF text layers", () => {
+    runPython(
+      [
+        "from kbprep_worker.diagnose import analyze_text_quality",
+        "text = '鐩綍\\nOpenClaw 鏄粈涔?\\n閮ㄧ讲鏂规\\nSkills 绯荤粺'",
+        "quality = analyze_text_quality(text * 20)",
+        "normal = analyze_text_quality('今天讲一下教程步骤、参数和失败经验。' * 20)",
+        "assert normal['mojibake_ratio'] == 0.0, normal",
+        "assert quality['mojibake_ratio'] > 0.08, quality",
+        "assert quality['unreadable_text_ratio'] > 0.08, quality",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("installs pinned CUDA torch into the selected plugin Python and re-probes in a fresh process", () => {
     runPython(
       [

@@ -68,11 +68,22 @@ def run_quality_check(
     run_p = Path(run_dir)
 
     # ── Conversion quality ────────────────────────────────────────
-    garbled_ratio = diagnosis.get("text_quality", {}).get("garbled_ratio", 0)
+    text_quality = diagnosis.get("text_quality", {})
+    garbled_ratio = text_quality.get("garbled_ratio", 0)
+    unreadable_ratio = text_quality.get("unreadable_text_ratio", 0)
+    mojibake_ratio = text_quality.get("mojibake_ratio", 0)
     if garbled_ratio > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
         strict_errors.append(f"E_TEXT_LAYER_GARBLED: garbled ratio {garbled_ratio:.2%} exceeds strict threshold")
     elif garbled_ratio > CONVERSION_THRESHOLDS["garbage_ratio_warn"]:
         warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: garbled ratio {garbled_ratio:.2%}")
+    if unreadable_ratio > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
+        strict_errors.append(f"E_TEXT_LAYER_UNREADABLE: unreadable ratio {unreadable_ratio:.2%} exceeds strict threshold")
+    elif unreadable_ratio > CONVERSION_THRESHOLDS["garbage_ratio_warn"]:
+        warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: unreadable ratio {unreadable_ratio:.2%}")
+    if mojibake_ratio > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
+        strict_errors.append(f"E_TEXT_LAYER_MOJIBAKE: mojibake ratio {mojibake_ratio:.2%} exceeds strict threshold")
+    elif mojibake_ratio > CONVERSION_THRESHOLDS["garbage_ratio_warn"]:
+        warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: mojibake ratio {mojibake_ratio:.2%}")
 
     # ── Cleaning quality ──────────────────────────────────────────
     total_blocks = len(blocks)

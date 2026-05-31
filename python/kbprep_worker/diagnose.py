@@ -19,72 +19,6 @@ from .supported_formats import FORMAT_BY_EXTENSION, SOURCE_TYPE_BY_FORMAT
 
 logger = logging.getLogger(__name__)
 
-# ── Extension mapping ─────────────────────────────────────────────
-EXTENSION_MAP = {
-    ".pdf": "pdf",
-    ".epub": "ebook",
-    ".mobi": "ebook",
-    ".docx": "docx",
-    ".doc": "doc",
-    ".pptx": "pptx",
-    ".ppt": "ppt",
-    ".xlsx": "xlsx",
-    ".xls": "xls",
-    ".md": "markdown",
-    ".markdown": "markdown",
-    ".txt": "text",
-    ".rst": "text",
-    ".adoc": "text",
-    ".csv": "text",
-    ".tsv": "text",
-    ".html": "html",
-    ".htm": "html",
-    ".json": "json",
-    ".vtt": "subtitle_transcript",
-    ".srt": "subtitle_transcript",
-    ".ass": "subtitle_transcript",
-    ".lrc": "subtitle_transcript",
-    ".mp3": "audio",
-    ".wav": "audio",
-    ".m4a": "audio",
-    ".aac": "audio",
-    ".flac": "audio",
-    ".mp4": "video",
-    ".mov": "video",
-    ".mkv": "video",
-    ".webm": "video",
-    ".png": "image",
-    ".jpg": "image",
-    ".jpeg": "image",
-    ".bmp": "image",
-    ".tiff": "image",
-    ".tif": "image",
-    ".webp": "image",
-    ".gif": "image",
-}
-
-# Source type mapping for pipeline
-SOURCE_TYPE_MAP = {
-    "pdf": "pdf_like",
-    "ebook": "pdf_like",
-    "docx": "pdf_like",
-    "doc": "pdf_like",
-    "xlsx": "pdf_like",
-    "xls": "pdf_like",
-    "pptx": "generic_block",
-    "ppt": "generic_block",
-    "markdown": "markdown_note",
-    "text": "generic_block",
-    "html": "generic_block",
-    "json": "generic_block",
-    "subtitle_transcript": "subtitle_transcript",
-    "audio": "generic_block",
-    "video": "generic_block",
-    "image": "pdf_like",
-}
-
-# ── Text quality analysis ─────────────────────────────────────────
-
 EXTENSION_MAP = FORMAT_BY_EXTENSION
 SOURCE_TYPE_MAP = SOURCE_TYPE_BY_FORMAT
 
@@ -100,6 +34,12 @@ COMMON_NON_CJK_RE = re.compile(r'[a-zA-Z0-9\s\u3000-\u303f.,;:!?()\-—\[\]{}<>"
 OCR_AI_CONFUSION_RE = re.compile(r'\b(?:All in Al|Al编程|Al工具|A时代|Al使用|ClaudeCode|Google Al)\b')
 # Garbled text: long runs of non-CJK, non-ASCII, non-common-punctuation
 GARBLED_RE = re.compile(r'[^\u4e00-\u9fff\u3000-\u303fa-zA-Z0-9\s.,;:!?()\-—\[\]{}<>"\'/\\@#$%^&*+=|~`]{15,}')
+# Common Chinese mojibake produced by broken PDF text layers. These are valid
+# Unicode characters, so a plain CJK ratio check can miss them.
+MOJIBAKE_RE = re.compile(
+    r'(?:[鐩綍绔鍏姝鏄鐨瀹鏂杩鎴搴閰瑙涓叧妯鍙鎶姟鍔卞彂]{2,}|[鈥聽銆€]{1,})'
+)
+MOJIBAKE_CHAR_RE = re.compile(r'[鐩綍绔鍏姝鏄鐨瀹鏂杩鎴搴閰瑙涓叧妯鍙鎶姟鍔卞彂绯荤粺]')
 # QR code indicators in text
 QR_TEXT_RE = re.compile(r'(?:扫码|二维码|扫一扫|QR\s*code|qrcode)', re.IGNORECASE)
 # CTA indicators
@@ -118,6 +58,8 @@ def analyze_text_quality(text: str) -> dict:
             "garbled_chars": 0,
             "non_common_unicode_ratio": 0.0,
             "replacement_char_ratio": 0.0,
+            "mojibake_ratio": 0.0,
+            "mojibake_chars": 0,
             "unreadable_text_ratio": 0.0,
             "ocr_ai_confusion_count": 0,
             "has_qr_text": False,
@@ -136,11 +78,17 @@ def analyze_text_quality(text: str) -> dict:
         if ord(ch) > 127 and not COMMON_CJK_RE.match(ch) and not COMMON_NON_CJK_RE.match(ch)
     )
     replacement_chars = text.count("?") + text.count("\ufffd")
+    mojibake_matches = MOJIBAKE_RE.findall(text)
+    mojibake_sequence_chars = sum(len(m) for m in mojibake_matches)
+    mojibake_char_count = len(MOJIBAKE_CHAR_RE.findall(text))
+    mojibake_chars = max(mojibake_sequence_chars, mojibake_char_count)
     non_common_unicode_ratio = non_common_unicode_chars / total if total > 0 else 0.0
     replacement_char_ratio = replacement_chars / total if total > 0 else 0.0
+    mojibake_ratio = mojibake_chars / total if total > 0 else 0.0
     unreadable_text_ratio = max(
         garbled_chars / total if total > 0 else 0.0,
         non_common_unicode_ratio,
+        mojibake_ratio,
         replacement_char_ratio if (chinese_chars + alnum_chars) / total < 0.2 else 0.0,
     )
     ocr_confusions = len(OCR_AI_CONFUSION_RE.findall(text))
@@ -154,6 +102,8 @@ def analyze_text_quality(text: str) -> dict:
         "garbled_chars": garbled_chars,
         "non_common_unicode_ratio": round(non_common_unicode_ratio, 4),
         "replacement_char_ratio": round(replacement_char_ratio, 4),
+        "mojibake_ratio": round(mojibake_ratio, 4),
+        "mojibake_chars": mojibake_chars,
         "unreadable_text_ratio": round(unreadable_text_ratio, 4),
         "ocr_ai_confusion_count": ocr_confusions,
         "has_qr_text": bool(QR_TEXT_RE.search(text)),
