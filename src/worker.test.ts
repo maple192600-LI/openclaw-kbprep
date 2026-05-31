@@ -186,12 +186,15 @@ function makeOfficeFixtures(docxPath: string, pptxPath: string, xlsxPath: string
       "            z.writestr(name, content)",
       "write_zip(docx_path, {",
       "  '[Content_Types].xml': '<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"/>',",
-      "  'word/document.xml': '''<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>",
+      "  'word/document.xml': '''<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><w:body>",
       "    <w:p><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr><w:r><w:t>DOCX Tutorial</w:t></w:r></w:p>",
       "    <w:p><w:r><w:t>Open the dashboard and set threshold=0.8 before exporting.</w:t></w:r></w:p>",
+      "    <w:p><w:r><w:drawing><a:blip r:embed=\"rIdDocImage1\"/></w:drawing></w:r></w:p>",
       "    <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Field</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Value</w:t></w:r></w:p></w:tc></w:tr>",
       "    <w:tr><w:tc><w:p><w:r><w:t>retry_count</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>3</w:t></w:r></w:p></w:tc></w:tr></w:tbl>",
-      "  </w:body></w:document>'''",
+      "  </w:body></w:document>''',",
+      "  'word/_rels/document.xml.rels': '''<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rIdDocImage1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"media/doc-step.png\"/></Relationships>''',",
+      "  'word/media/doc-step.png': png1x1",
       "})",
       "write_zip(pptx_path, {",
       "  '[Content_Types].xml': '<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"/>',",
@@ -1709,7 +1712,14 @@ describe("kbprep worker pipeline", () => {
           input: docxPath,
           out: path.join(root, "docx-out"),
           format: "docx",
-          expected: ["# DOCX Tutorial", "threshold=0.8", "| Field | Value |", "| retry_count | 3 |"],
+          expected: [
+            "# DOCX Tutorial",
+            "threshold=0.8",
+            "## Embedded Images",
+            "![DOCX Image 1](images/office/docx/doc-step.png)",
+            "| Field | Value |",
+            "| retry_count | 3 |",
+          ],
         },
         {
           input: pptxPath,
@@ -1764,6 +1774,10 @@ describe("kbprep worker pipeline", () => {
         expect(conversionReport.diagnosed_format).toBe(item.format);
         expect(conversionReport.diagnosed_pipeline).toBe("office_xml");
         expect(conversionReport.diagnosed_strategy).toBe("office_xml");
+        if (item.format === "docx") {
+          expect(conversionReport.mineru_artifacts.office_image_assets.copied_count).toBe(1);
+          expect(existsSync(path.join(item.out, "images", "office", "docx", "doc-step.png"))).toBe(true);
+        }
         if (item.format === "pptx") {
           expect(conversionReport.diagnosed_split_strategy).toBe("preserve_slide_or_page_order");
           expect(conversionReport.mineru_artifacts.content_list_path).toContain("pptx_content_list.json");
