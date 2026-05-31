@@ -1190,6 +1190,59 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("treats English Step N tutorial lines as protected operation steps", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-english-steps-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "lesson.txt");
+      writeFileSync(
+        sourcePath,
+        [
+          "Step 1: open dashboard",
+          "",
+          "Set threshold=0.8 and record failure_reason=timeout.",
+          "",
+          "Step 2: export the result and keep retry_count=3 in the notes.",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const diagnosis = runWorker("diagnose", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        source_type: "auto",
+      });
+      const envelope = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        profile: "tutorial",
+        mode: "rules_only",
+        language: "en",
+        force: true,
+      });
+
+      const blocks = readFileSync(path.join(outputRoot, "blocks.jsonl"), "utf8")
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => JSON.parse(line));
+      const quality = JSON.parse(readFileSync(path.join(outputRoot, "quality_report.json"), "utf8"));
+      const cleaned = readFileSync(path.join(outputRoot, "cleaned.md"), "utf8");
+
+      expect(diagnosis.data.text_profile).toBe("tutorial");
+      expect(envelope.data.strict_errors).toEqual([]);
+      expect(blocks.filter((block) => block.type === "operation_step").length).toBeGreaterThanOrEqual(2);
+      expect(quality.retention.operation_step_total).toBeGreaterThanOrEqual(2);
+      expect(quality.detail_retention.operation_step.total_blocks).toBeGreaterThanOrEqual(2);
+      expect(cleaned).toContain("Step 1: open dashboard");
+      expect(cleaned).toContain("retry_count=3");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("converts local HTML, JSON, and CSV sources into readable Markdown", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-direct-formats-"));
     try {
@@ -2311,7 +2364,7 @@ describe("kbprep worker pipeline", () => {
       expect(textDiag.data.pdf_subtype).toBe("text_layer");
       expect(textDiag.data.needs_ocr).toBe(false);
       expect(textDiag.data.text_pages).toBe(1);
-      expect(textDiag.data.text_profile).toBe("short_text");
+      expect(textDiag.data.text_profile).toBe("tutorial");
       expect(textDiag.data.char_count).toBeGreaterThan(20);
       expect(textDiag.data.recommended_pipeline).toBe("pdf_text_layer");
       expect(textDiag.data.conversion_strategy).toBe("pdf_text_layer");

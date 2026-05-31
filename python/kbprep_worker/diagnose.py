@@ -135,6 +135,8 @@ def detect_text_profile(text: str, detected_format: str = "text") -> dict:
         text,
         re.MULTILINE,
     ))
+    english_numbered_steps = len(re.findall(r'^\s*step\s*\d+[\uff1a:\.\)\-\s]+', text, re.MULTILINE | re.IGNORECASE))
+    numbered_steps += english_numbered_steps
     timestamp_lines = len(re.findall(r'^\s*(?:\d{1,2}:)?\d{1,2}:\d{2}(?:[.,]\d{1,3})?', text, re.MULTILINE))
     speaker_lines = len(re.findall(r'^\s*[^:\n：]{1,24}[：:]\s+\S+', text, re.MULTILINE))
     table_rows = len(re.findall(r'^\|.+\|$', text, re.MULTILINE))
@@ -149,7 +151,7 @@ def detect_text_profile(text: str, detected_format: str = "text") -> dict:
         profile = "ebook_or_long_report"
     elif detected_format == "subtitle_transcript" or timestamp_lines >= 3 or speaker_lines >= 8:
         profile = "transcript"
-    elif numbered_steps >= 3 or any(term.lower() in text.lower() for term in tutorial_terms):
+    elif numbered_steps >= 3 or english_numbered_steps > 0 or any(term.lower() in text.lower() for term in tutorial_terms):
         profile = "tutorial"
     elif any(term in text for term in meeting_terms):
         profile = "meeting_or_interview"

@@ -376,9 +376,10 @@ def _is_markdown_image_only(text: str) -> bool:
 DETAIL_SIGNAL_PATTERNS = {
     "operation_step": re.compile(
         r"^\s*(?:\d+[\.\)\u3001]\s+|"
+        r"step\s*\d+[\uff1a:\.\)\-\s]+|"
         r"\u7b2c[\u4e00-\u9fff\d]+(?:\u6b65|\u6b65\u9aa4)[\uff1a:\u3001\.\s]|"
         r"\u6b65\u9aa4\s*[\u4e00-\u9fff\d]+[\uff1a:\u3001\.\s])",
-        re.MULTILINE,
+        re.MULTILINE | re.IGNORECASE,
     ),
     "tool_or_platform": re.compile(
         r"\u5de5\u5177|\u5e73\u53f0|\u8d26\u53f7|\u540e\u53f0|\u7f51\u7ad9|"

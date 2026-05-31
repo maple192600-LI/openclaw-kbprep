@@ -43,6 +43,7 @@ STEP_RE = re.compile(
 )
 
 # ── Quote/callout pattern ─────────────────────────────────────────
+EN_STEP_RE = re.compile(r'^\s*step\s*\d+[\uff1a:\.\)\-\s]+', re.MULTILINE | re.IGNORECASE)
 CALLOUT_RE = re.compile(r'^>\s*\[!(\w+)\]', re.MULTILINE)
 
 
@@ -348,7 +349,7 @@ def _infer_block_type(text: str) -> str:
         return "quote"
 
     # Numbered steps
-    if STEP_RE.match(stripped):
+    if STEP_RE.match(stripped) or EN_STEP_RE.match(stripped):
         return "operation_step"
 
     # Default

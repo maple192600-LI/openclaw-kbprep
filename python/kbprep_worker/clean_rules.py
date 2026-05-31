@@ -55,6 +55,9 @@ STEP_RE = re.compile(
 )
 
 
+EN_STEP_RE = re.compile(r"^\s*step\s*\d+[\uff1a:\.\)\-\s]+", re.MULTILINE | re.IGNORECASE)
+
+
 def apply_clean_rules(blocks: list[dict]) -> list[dict]:
     """
     Apply cleaning rules to classified blocks.
@@ -181,7 +184,7 @@ def _is_tutorial_context(text: str, block: dict) -> bool:
         return True
 
     # Check if text contains step numbers (1. 2. 3.)
-    if STEP_RE.search(text):
+    if STEP_RE.search(text) or EN_STEP_RE.search(text):
         return True
 
     # Check if text contains code blocks or commands

@@ -46,11 +46,12 @@ EVIDENCE_PATTERNS = [
 
 STEP_RE = re.compile(
     r"^\s*(?:\d+[\.\)\u3001]\s+|"
+    r"step\s*\d+[\uff1a:\.\)\-\s]+|"
     r"\u7b2c?[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07\d]+"
     r"(?:\u6b65|\u6b65\u9aa4)?[\uff1a:\u3001\.\s]|"
     r"\u6b65\u9aa4\s*[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07\d]+"
     r"[\uff1a:\u3001\.\s])",
-    re.MULTILINE,
+    re.MULTILINE | re.IGNORECASE,
 )
 
 PROMPT_RE = re.compile(r"\u63d0\u793a\u8bcd|prompt|\u6307\u4ee4|\u547d\u4ee4", re.IGNORECASE)
