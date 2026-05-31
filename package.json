@@ -1,6 +1,6 @@
 {
   "name": "openclaw-kbprep",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "OpenClaw source-to-clean-Markdown preparation plugin for Obsidian and LLM Wiki workflows.",
   "type": "module",
   "private": true,
