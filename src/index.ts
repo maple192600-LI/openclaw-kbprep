@@ -49,16 +49,18 @@ export async function ensurePythonRuntime(config?: PluginConfig): Promise<string
     "install kbprep worker dependencies into plugin-local Python virtual environment",
     60 * 60_000,
   );
-  await runSetupCommand(
+  const setupResult = await runSetupCommand(
     pythonPath,
     ["-m", "kbprep_worker.cli", "setup-env", "--json-stdin"],
     "detect hardware and tune plugin-local Python dependencies",
     30 * 60_000,
-    "{}",
+    JSON.stringify({ device_override: config?.device_override ?? "auto" }),
   );
   writeFileSync(pluginVenvReadyMarker(), JSON.stringify({
     schema: "kbprep.plugin_venv.v1",
     created_at: new Date().toISOString(),
+    python_executable: pythonPath,
+    setup_env: parseSetupEnvelope(setupResult.stdout),
   }, null, 2), "utf-8");
   return pythonPath;
 }
@@ -112,7 +114,7 @@ function runSetupCommand(
   label: string,
   timeoutMs: number,
   stdin = "",
-): Promise<void> {
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, {
       cwd: pluginRootDir(),
@@ -142,7 +144,7 @@ function runSetupCommand(
     child.on("close", (code) => {
       clearTimeout(timer);
       if (code === 0) {
-        resolvePromise();
+        resolvePromise({ stdout, stderr });
         return;
       }
       const tail = (stderr || stdout).split(/\r?\n/).filter(Boolean).slice(-20).join("\n");
@@ -153,6 +155,16 @@ function runSetupCommand(
       reject(err);
     });
   });
+}
+
+function parseSetupEnvelope(stdout: string): unknown {
+  const trimmed = stdout.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return { raw_stdout_preview: trimmed.slice(0, 500) };
+  }
 }
 
 const sourceTypeSchema = Type.Union([

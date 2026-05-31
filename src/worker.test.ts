@@ -216,6 +216,77 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("installs pinned CUDA torch into the selected plugin Python and re-probes in a fresh process", () => {
+    runPython(
+      [
+        "import json",
+        "from kbprep_worker import setup_env",
+        "calls = []",
+        "state = {'cuda_installed': False}",
+        "class Proc:",
+        "    def __init__(self, returncode=0, stdout='', stderr=''):",
+        "        self.returncode = returncode",
+        "        self.stdout = stdout",
+        "        self.stderr = stderr",
+        "def fake_which(name):",
+        "    return 'C:/Windows/System32/nvidia-smi.exe' if name == 'nvidia-smi' else None",
+        "def fake_run(cmd, **kwargs):",
+        "    calls.append(cmd)",
+        "    if cmd[:3] == ['venv-python', '-m', 'pip']:",
+        "        state['cuda_installed'] = True",
+        "        return Proc()",
+        "    if cmd[:2] == ['venv-python', '-c']:",
+        "        payload = {'installed': True, 'version': '2.8.0+cpu', 'cuda_available': False, 'cuda_version': 'none', 'device_count': 0, 'device': 'cpu'}",
+        "        if state['cuda_installed']:",
+        "            payload = {'installed': True, 'version': '2.8.0+cu126', 'cuda_available': True, 'cuda_version': '12.6', 'device_count': 1, 'device': 'cuda', 'device_name': 'RTX Test', 'vram_gb': 16.0}",
+        "        return Proc(stdout=json.dumps(payload))",
+        "    raise AssertionError(cmd)",
+        "setup_env.shutil.which = fake_which",
+        "setup_env.subprocess.run = fake_run",
+        "result = setup_env.setup_gpu('venv-python')",
+        "pip_calls = [cmd for cmd in calls if cmd[:3] == ['venv-python', '-m', 'pip']]",
+        "assert len(pip_calls) == 1, calls",
+        "assert 'torch==2.8.0' in pip_calls[0], pip_calls",
+        "assert 'torchvision==0.23.0' in pip_calls[0], pip_calls",
+        "assert 'https://download.pytorch.org/whl/cu126' in pip_calls[0], pip_calls",
+        "assert result['torch_cuda'] is True, result",
+        "assert result['device'] == 'cuda', result",
+        "assert result['gpu']['device_name'] == 'RTX Test', result",
+      ].join("\n"),
+      [],
+    );
+  });
+
+  it("does not install CUDA torch when plugin config forces CPU mode", () => {
+    runPython(
+      [
+        "import json",
+        "from kbprep_worker import setup_env",
+        "calls = []",
+        "class Proc:",
+        "    def __init__(self, returncode=0, stdout='', stderr=''):",
+        "        self.returncode = returncode",
+        "        self.stdout = stdout",
+        "        self.stderr = stderr",
+        "def fake_which(name):",
+        "    return 'C:/Windows/System32/nvidia-smi.exe' if name == 'nvidia-smi' else None",
+        "def fake_run(cmd, **kwargs):",
+        "    calls.append(cmd)",
+        "    if cmd[:2] == ['venv-python', '-c']:",
+        "        payload = {'installed': True, 'version': '2.8.0+cpu', 'cuda_available': False, 'cuda_version': 'none', 'device_count': 0, 'device': 'cpu'}",
+        "        return Proc(stdout=json.dumps(payload))",
+        "    raise AssertionError(cmd)",
+        "setup_env.shutil.which = fake_which",
+        "setup_env.subprocess.run = fake_run",
+        "result = setup_env.setup_gpu('venv-python', device_override='cpu')",
+        "assert not [cmd for cmd in calls if cmd[:3] == ['venv-python', '-m', 'pip']], calls",
+        "assert result['actions_taken'] == ['cuda_install_skipped_device_override_cpu'], result",
+        "assert result['device_override'] == 'cpu', result",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("prefers MinerU installed beside the selected Python executable", () => {
     runPython(
       [

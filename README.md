@@ -54,6 +54,8 @@ On first use, the plugin creates its own Python runtime at `.kbprep/venv` inside
 The plugin always runs the worker through this plugin-local `.kbprep/venv` in normal OpenClaw use. `python_path` is only an optional bootstrap interpreter used to create that venv; it is not treated as the dependency runtime.
 
 The worker is also isolated from user-site packages (`PYTHONNOUSERSITE=1`), and MinerU is resolved only from the selected venv's `Scripts/` or `bin/` directory. A system-wide `mineru` on PATH is not used.
+When an NVIDIA driver is detected and the plugin-local torch is CPU-only, setup installs pinned CUDA wheels (`torch==2.8.0`, `torchvision==0.23.0`, cu126 index) into `.kbprep/venv` and then re-checks torch in a fresh Python process. Set plugin config `device_override="cpu"` to skip CUDA wheel installation.
+The setup result is written to `.kbprep/runtime-ready.json` so the selected Python path, CUDA action, and detected torch state are traceable.
 
 Run `kbprep_preflight` before heavy PDF/Office conversion and check:
 

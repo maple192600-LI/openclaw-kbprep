@@ -90,7 +90,7 @@ def cmd_preflight(data: dict) -> None:
 def cmd_setup_env(data: dict) -> None:
     from .envelope import ok
     from .setup_env import setup_gpu
-    ok(data=setup_gpu())
+    ok(data=setup_gpu(device_override=data.get("device_override")))
 
 
 def cmd_diagnose(data: dict) -> None:

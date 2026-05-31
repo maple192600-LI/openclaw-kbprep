@@ -31,10 +31,12 @@ export async function ensurePythonRuntime(config) {
     await runSetupCommand(bootstrap.command, [...bootstrap.args, "-m", "venv", venvDir], "create plugin-local Python virtual environment", 5 * 60_000);
     await runSetupCommand(pythonPath, ["-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], "upgrade pip in plugin-local Python virtual environment", 10 * 60_000);
     await runSetupCommand(pythonPath, ["-m", "pip", "install", "-e", pluginPythonProjectDir()], "install kbprep worker dependencies into plugin-local Python virtual environment", 60 * 60_000);
-    await runSetupCommand(pythonPath, ["-m", "kbprep_worker.cli", "setup-env", "--json-stdin"], "detect hardware and tune plugin-local Python dependencies", 30 * 60_000, "{}");
+    const setupResult = await runSetupCommand(pythonPath, ["-m", "kbprep_worker.cli", "setup-env", "--json-stdin"], "detect hardware and tune plugin-local Python dependencies", 30 * 60_000, JSON.stringify({ device_override: config?.device_override ?? "auto" }));
     writeFileSync(pluginVenvReadyMarker(), JSON.stringify({
         schema: "kbprep.plugin_venv.v1",
         created_at: new Date().toISOString(),
+        python_executable: pythonPath,
+        setup_env: parseSetupEnvelope(setupResult.stdout),
     }, null, 2), "utf-8");
     return pythonPath;
 }
@@ -108,7 +110,7 @@ function runSetupCommand(command, args, label, timeoutMs, stdin = "") {
         child.on("close", (code) => {
             clearTimeout(timer);
             if (code === 0) {
-                resolvePromise();
+                resolvePromise({ stdout, stderr });
                 return;
             }
             const tail = (stderr || stdout).split(/\r?\n/).filter(Boolean).slice(-20).join("\n");
@@ -119,6 +121,17 @@ function runSetupCommand(command, args, label, timeoutMs, stdin = "") {
             reject(err);
         });
     });
+}
+function parseSetupEnvelope(stdout) {
+    const trimmed = stdout.trim();
+    if (!trimmed)
+        return null;
+    try {
+        return JSON.parse(trimmed);
+    }
+    catch {
+        return { raw_stdout_preview: trimmed.slice(0, 500) };
+    }
 }
 const sourceTypeSchema = Type.Union([
     Type.Literal("auto"),

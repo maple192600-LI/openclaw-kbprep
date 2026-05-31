@@ -8,7 +8,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cuda = ["torch>=2.8.0", "torchvision>=0.23.0"]
+cuda = ["torch==2.8.0", "torchvision==0.23.0"]
 
 [build-system]
 requires = ["setuptools>=75.0"]
