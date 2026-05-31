@@ -95,7 +95,7 @@ ALNUM_RE = re.compile(r'[a-zA-Z0-9]')
 # Control characters (excluding common whitespace)
 CONTROL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]')
 COMMON_CJK_RE = re.compile(r'[\u4e00-\u9fff]')
-COMMON_NON_CJK_RE = re.compile(r'[a-zA-Z0-9\s\u3000-\u303f.,;:!?()\-鈥擻[\]{}<>"\'/\\@#$%^&*+=|~`，。！？；：（）【】《》、]')
+COMMON_NON_CJK_RE = re.compile(r'[a-zA-Z0-9\s\u3000-\u303f.,;:!?()\-—\[\]{}<>"\'/\\@#$%^&*+=|~`，。！？；：（）【】《》、]')
 # Common OCR confusion patterns
 OCR_AI_CONFUSION_RE = re.compile(r'\b(?:All in Al|Al编程|Al工具|A时代|Al使用|ClaudeCode|Google Al)\b')
 # Garbled text: long runs of non-CJK, non-ASCII, non-common-punctuation

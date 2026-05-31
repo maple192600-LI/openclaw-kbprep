@@ -216,6 +216,19 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("does not count common Markdown punctuation as garbled PDF text", () => {
+    runPython(
+      [
+        "from kbprep_worker.diagnose import analyze_text_quality",
+        "text = '第一步：打开 A—B 设置页，填写 threshold=0.8，并记录 [retry_count]。'",
+        "quality = analyze_text_quality(text)",
+        "assert quality['non_common_unicode_ratio'] == 0.0, quality",
+        "assert quality['garbled_ratio'] == 0.0, quality",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("installs pinned CUDA torch into the selected plugin Python and re-probes in a fresh process", () => {
     runPython(
       [
