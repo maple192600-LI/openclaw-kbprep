@@ -462,6 +462,7 @@ def run(data: dict) -> None:
         "quality_report": str(run_dir / "quality_report.json"),
         "chunks_dir": str(chunks_dir),
         "parts_dir": str(run_dir / "parts"),
+        "images_dir": str(run_dir / "images"),
         "review_pack": str(run_dir / "review_pack.json") if (run_dir / "review_pack.json").exists() else None,
     }
     if strict_errors:

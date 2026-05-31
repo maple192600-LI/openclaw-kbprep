@@ -243,6 +243,7 @@ def _run_output_paths(run_p: Path) -> dict:
         "review_needed_md": str(run_p / "review_needed.md"),
         "quality_report": str(run_p / "quality_report.json"),
         "parts_dir": str(run_p / "parts"),
+        "images_dir": str(run_p / "images"),
     }
 
 

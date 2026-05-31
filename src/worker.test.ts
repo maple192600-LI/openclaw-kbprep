@@ -942,8 +942,13 @@ describe("kbprep worker pipeline", () => {
       const cleaned = readFileSync(path.join(runDir, "cleaned.md"), "utf8");
       const discarded = readFileSync(path.join(runDir, "discarded.md"), "utf8");
       const conversionReport = JSON.parse(readFileSync(path.join(runDir, "conversion_report.json"), "utf8"));
+      const quality = JSON.parse(readFileSync(path.join(runDir, "quality_report.json"), "utf8"));
+      const packageVersion = JSON.parse(readFileSync("package.json", "utf8")).version;
 
       expect(envelope.data.strict_errors).toEqual([]);
+      expect(quality.plugin_version).toBe(packageVersion);
+      expect(envelope.data.outputs.images_dir).toContain("images");
+      expect(envelope.data.latest_outputs.images_dir).toContain("images");
       expect(conversionReport.runtime.python_executable).toContain("python");
       expect(conversionReport.runtime).toHaveProperty("mineru_path");
       expect(conversionReport.runtime).toHaveProperty("torch_cuda_available");
