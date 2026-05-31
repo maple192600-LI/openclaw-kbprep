@@ -1,9 +1,9 @@
 """
-prepare 鈥?v4 single-file pipeline.
+prepare - single-file pipeline.
 
-Pipeline: env_check 鈫?original_preserve 鈫?diagnose 鈫?convert 鈫?normalize
-鈫?blockify 鈫?classify_blocks 鈫?clean_rules 鈫?image_clean 鈫?render_outputs
-鈫?split 鈫?quality_check
+Pipeline: env_check -> original_preserve -> diagnose -> convert -> normalize
+-> blockify -> classify_blocks -> clean_rules -> image_clean -> render_outputs
+-> split -> quality_check
 
 Each stage failure is tracked. If any stage fails, subsequent stages are skipped.
 """
@@ -36,7 +36,6 @@ from .supported_formats import (
 
 logger = logging.getLogger(__name__)
 
-# 鈹€鈹€ Pipeline error tracking 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 class PipelineError(Exception):
     """Raised when a pipeline stage fails."""
     def __init__(self, code: str, message: str, details: dict = None):
@@ -75,12 +74,11 @@ def run(data: dict) -> None:
         return
 
     try:
-        # 鈹€鈹€ Stage 1: env_check 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 1: env_check
         _stderr_log("info", "env_check", "Checking environment")
         env_warnings = _check_env(profile)
         warnings.extend(env_warnings)
-
-        # 鈹€鈹€ Stage 2: original_preserve 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 2: original_preserve
         _stderr_log("info", "original_preserve", "Computing file hash")
         file_bytes = input_p.read_bytes()
         file_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -139,8 +137,7 @@ def run(data: dict) -> None:
         if not original_file.exists():
             shutil.copy2(str(input_p), str(original_file))
             _stderr_log("info", "original_preserve", f"Original saved: {original_file.name}")
-
-        # 鈹€鈹€ Stage 3: diagnose 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 3: diagnose
         _stderr_log("info", "diagnose", "Diagnosing file quality")
         diagnosis = {}
         try:
@@ -163,8 +160,7 @@ def run(data: dict) -> None:
             runtime=runtime,
             warnings=warnings,
         )
-
-        # 鈹€鈹€ Stage 4: convert 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 4: convert
         _stderr_log("info", "convert", "Converting file")
         converted_path = run_dir / "converted.md"
         mineru_artifacts = {}
@@ -250,8 +246,7 @@ def run(data: dict) -> None:
             diagnosis=diagnosis,
             warnings=warnings,
         )
-
-        # 鈹€鈹€ Stage 5: normalize 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 5: normalize
         _stderr_log("info", "normalize", "Normalizing markdown")
         normalized_path = run_dir / "normalized.md"
         from . import normalize as norm_mod
@@ -266,8 +261,7 @@ def run(data: dict) -> None:
 
         if not normalized_path.exists():
             raise PipelineError("E_NORMALIZE_FAILED", "normalized.md not found after normalization")
-
-        # 鈹€鈹€ Stage 6: blockify 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 6: blockify
         _stderr_log("info", "blockify", "Building blocks")
         blocks_path = run_dir / "blocks.jsonl"
         from . import blockify as block_mod
@@ -282,8 +276,7 @@ def run(data: dict) -> None:
             for block in blocks:
                 f.write(json.dumps(block, ensure_ascii=False) + "\n")
         _stderr_log("info", "blockify", f"Created {len(blocks)} blocks")
-
-        # 鈹€鈹€ Stage 7: classify_blocks 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 7: classify_blocks
         _stderr_log("info", "classify_blocks", "Classifying blocks")
         from . import classify_blocks as cls_mod
         blocks = cls_mod.classify_blocks(blocks)
@@ -291,8 +284,7 @@ def run(data: dict) -> None:
             for block in blocks:
                 f.write(json.dumps(block, ensure_ascii=False) + "\n")
         _stderr_log("info", "classify_blocks", "Classification complete")
-
-        # 鈹€鈹€ Stage 8: clean_rules 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 8: clean_rules
         _stderr_log("info", "clean_rules", "Applying cleaning rules")
         from . import clean_rules_v4 as clean_mod
         blocks = clean_mod.apply_clean_rules(blocks)
@@ -300,8 +292,7 @@ def run(data: dict) -> None:
             for block in blocks:
                 f.write(json.dumps(block, ensure_ascii=False) + "\n")
         _stderr_log("info", "clean_rules", "Cleaning rules applied")
-
-        # 鈹€鈹€ Stage 9: image_clean 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 9: image_clean
         _stderr_log("info", "image_clean", "Classifying images")
         try:
             from . import images as img_mod
@@ -317,8 +308,7 @@ def run(data: dict) -> None:
         if mode == "rules_plus_review_pack":
             _stderr_log("info", "review_pack", "Generating review pack")
             _generate_review_pack(blocks, run_dir, source_type)
-
-        # 鈹€鈹€ Stage 10: render_outputs 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 10: render_outputs
         _stderr_log("info", "render_outputs", "Rendering output files")
         from . import render_outputs as render_mod
         render_mod.render(
@@ -328,8 +318,7 @@ def run(data: dict) -> None:
             run_id=run_id,
         )
         _stderr_log("info", "render_outputs", "Output files rendered")
-
-        # 鈹€鈹€ Stage 11: split 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 11: split
         _stderr_log("info", "split", "Splitting into chunks")
         from . import split_v4 as split_mod
         splitter_type = override_splitter if override_splitter != "auto" else source_type
@@ -343,8 +332,7 @@ def run(data: dict) -> None:
         )
         warnings.extend(split_result.get("warnings", []))
         _stderr_log("info", "split", f"Created {split_result.get('chunk_count', 0)} chunks")
-
-        # 鈹€鈹€ Stage 12: quality_check 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        # Stage 12: quality_check
         _stderr_log("info", "quality_check", "Running quality checks")
         from . import quality as qa_mod
         quality_report = qa_mod.run_quality_check(
@@ -404,8 +392,7 @@ def run(data: dict) -> None:
             details.update(extra_details)
         fail(error_code, str(e), details=details, warnings=warnings)
         return
-
-    # 鈹€鈹€ Generate audit.md 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Generate audit.md
     try:
         audit_md = _generate_audit_md(
             input_name=input_p.name,
@@ -423,8 +410,7 @@ def run(data: dict) -> None:
         (run_dir / "audit.md").write_text(audit_md, encoding="utf-8")
     except Exception as e:
         _stderr_log("warn", "audit", f"Failed to generate audit.md: {e}")
-
-    # 鈹€鈹€ Update latest.json 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Update latest.json
     latest_outputs = _latest_output_paths(root_p)
     if not strict_errors:
         latest_outputs = _publish_latest_outputs(run_dir, root_p)
@@ -443,8 +429,7 @@ def run(data: dict) -> None:
         }, indent=2, ensure_ascii=False), encoding="utf-8")
     else:
         _stderr_log("warn", "quality_check", "Strict errors: latest.json NOT updated")
-
-    # 鈹€鈹€ Final output 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Final output
     chunks_dir = run_dir / "chunks"
     chunk_count = len(list(chunks_dir.glob("*.md"))) if chunks_dir.exists() else 0
 
@@ -1475,3 +1460,4 @@ def _generate_audit_md(
         lines.append("")
 
     return "\n".join(lines)
+
