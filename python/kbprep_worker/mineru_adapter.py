@@ -157,6 +157,8 @@ def run_mineru(
     # Locate MinerU output files
     possible_roots = [
         assets_dir / stem,
+        assets_dir / stem / "auto",
+        assets_dir / stem / "ocr",
         assets_dir / "auto" / stem,
         assets_dir / "ocr" / stem,
     ]

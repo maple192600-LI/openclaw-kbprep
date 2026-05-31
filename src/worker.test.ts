@@ -216,6 +216,46 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("discovers MinerU 3.2 auto output files under the stem directory", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-mineru-discovery-"));
+    try {
+      runPython(
+        [
+          "import subprocess, sys",
+          "from pathlib import Path",
+          "from kbprep_worker import mineru_adapter",
+          "root = Path(sys.argv[1])",
+          "input_path = root / 'sample.pdf'",
+          "input_path.write_bytes(b'%PDF-1.4\\n')",
+          "class Proc:",
+          "    returncode = 0",
+          "    stdout = ''",
+          "    stderr = ''",
+          "def fake_run(cmd, **kwargs):",
+          "    out = Path(cmd[cmd.index('-o') + 1])",
+          "    auto = out / input_path.stem / 'auto'",
+          "    auto.mkdir(parents=True)",
+          "    (auto / f'{input_path.stem}.md').write_text('# OCR\\n', encoding='utf-8')",
+          "    (auto / f'{input_path.stem}_content_list.json').write_text('[]', encoding='utf-8')",
+          "    (auto / f'{input_path.stem}_content_list_v2.json').write_text('[]', encoding='utf-8')",
+          "    (auto / f'{input_path.stem}_middle.json').write_text('{}', encoding='utf-8')",
+          "    return Proc()",
+          "mineru_adapter.find_mineru = lambda: 'mineru'",
+          "subprocess.run = fake_run",
+          "result = mineru_adapter.run_mineru(str(input_path), str(root / 'run'), language='zh', mode='auto')",
+          "assert result['source_md_path'].endswith('source.md'), result",
+          "assert result['content_list_path'].endswith('_content_list.json'), result",
+          "assert result['content_list_v2_path'].endswith('_content_list_v2.json'), result",
+          "assert result['middle_json_path'].endswith('_middle.json'), result",
+          "assert result['warnings'] == [], result",
+        ].join("\n"),
+        [root],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("does not count common Markdown punctuation as garbled PDF text", () => {
     runPython(
       [
