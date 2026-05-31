@@ -1243,6 +1243,68 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("preserves Obsidian markdown structure while removing standalone CTA pollution", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-obsidian-md-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "obsidian-note.md");
+      writeFileSync(
+        sourcePath,
+        [
+          "---",
+          "tags: [kbprep, tutorial]",
+          "aliases:",
+          "  - 清洗插件测试",
+          "---",
+          "",
+          "# Obsidian 清洗教程",
+          "",
+          "[[OpenClaw]] 和 [[MinerU]] 都要保留，因为它们是工具链细节。 #LLM-Wiki",
+          "",
+          "> [!warning] CTA 判断规则",
+          "> 如果教程案例里出现“扫码入群”，不要按关键词删除；要记录 risk_label=possible_cta，并保留上下文。",
+          "",
+          "步骤1：打开插件输出目录，检查 cleaned.md、discarded.md、review_needed.md。",
+          "",
+          "扫码加入社群领取体验卡",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        profile: "tutorial",
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+
+      const cleaned = readFileSync(path.join(outputRoot, "cleaned.md"), "utf8");
+      const discarded = readFileSync(path.join(outputRoot, "discarded.md"), "utf8");
+      const quality = JSON.parse(readFileSync(path.join(outputRoot, "quality_report.json"), "utf8"));
+
+      expect(envelope.data.strict_errors).toEqual([]);
+      expect(cleaned).toContain("tags: [kbprep, tutorial]");
+      expect(cleaned).toContain("aliases:");
+      expect(cleaned).toContain("[[OpenClaw]]");
+      expect(cleaned).toContain("[[MinerU]]");
+      expect(cleaned).toContain("#LLM-Wiki");
+      expect(cleaned).toContain("> [!warning] CTA 判断规则");
+      expect(cleaned).toContain("risk_label=possible_cta");
+      expect(cleaned).toContain("步骤1：打开插件输出目录");
+      expect(cleaned).not.toContain("扫码加入社群领取体验卡");
+      expect(discarded).toContain("扫码加入社群领取体验卡");
+      expect(quality.detail_retention.operation_step.total_blocks).toBeGreaterThanOrEqual(1);
+      expect(quality.output_retention.cleaned_md.parameter.missing_count).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("converts local HTML, JSON, and CSV sources into readable Markdown", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-direct-formats-"));
     try {
