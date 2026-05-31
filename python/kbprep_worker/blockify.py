@@ -1,5 +1,5 @@
 """
-blockify — v4 block-level structuring.
+blockify - block-level structuring.
 Parses normalized.md into structured blocks with metadata.
 
 Input: normalized.md + page map + image map + heading map

@@ -1,5 +1,5 @@
 """
-diagnose — file quality diagnosis for kbprep v4.
+diagnose - file quality diagnosis for kbprep.
 Read-only: does not modify any files.
 
 Outputs: file hash, type, page count, text layer health, garbled ratio,

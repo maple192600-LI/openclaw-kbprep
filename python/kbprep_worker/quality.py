@@ -1,5 +1,5 @@
 """
-quality — v4 quality gate.
+quality - quality gate.
 Checks: conversion quality, cleaning quality, splitting quality.
 Outputs: quality_report.json with strict errors and warnings.
 """

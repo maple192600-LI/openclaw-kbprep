@@ -1,5 +1,5 @@
 """
-clean_rules_v4 — v4 block-level cleaning rules.
+clean_rules - block-level cleaning rules.
 Operates on blocks.jsonl, NOT on raw markdown.
 
 Each block's status is updated based on classification.

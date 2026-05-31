@@ -1,6 +1,5 @@
 /**
- * KBPrep v4 error codes and error types.
- * Unified error codes from the v4 fix plan.
+ * KBPrep error codes and error types.
  */
 // ── Error codes (E_ prefix) ──────────────────────────────────────
 export const KBPREP_ERROR_CODES = [

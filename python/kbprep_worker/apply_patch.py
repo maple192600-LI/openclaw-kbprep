@@ -1,5 +1,5 @@
 """
-apply_patch — v4 apply LLM review patches to blocks.
+apply_patch - apply guarded review patches to blocks.
 Only allows changing: status, risk_tags, reason, confidence.
 Cannot change: text, page_range, source_line_range.
 Cannot discard protected blocks.
@@ -134,7 +134,7 @@ def run(data: dict) -> None:
     diagnosis = _read_diagnosis(run_p)
 
     # Re-split chunks so cleaned output and chunk files stay consistent.
-    from . import split_v4 as split_mod
+    from . import split as split_mod
     split_mod.split_into_chunks(
         blocks=blocks,
         run_dir=run_dir,

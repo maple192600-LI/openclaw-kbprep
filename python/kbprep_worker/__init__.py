@@ -1,2 +1,2 @@
-"""KBPrep Python worker package — v4."""
+"""KBPrep Python worker package."""
 __version__ = "0.4.0"

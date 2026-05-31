@@ -1,5 +1,5 @@
 /**
- * Python worker spawner for kbprep v4.
+ * Python worker spawner for kbprep.
  * Uses child_process.spawn to call Python CLI.
  * No HTTP service, no daemon, no persistent worker.
  */

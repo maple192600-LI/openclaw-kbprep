@@ -1,5 +1,5 @@
 """
-classify_images — v4 image classification.
+classify_images - image classification.
 Improved: reads context from converted.md directly instead of relying on block neighbors.
 """
 import logging

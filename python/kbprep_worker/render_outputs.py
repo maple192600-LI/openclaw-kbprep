@@ -1,5 +1,5 @@
 """
-render_outputs — v4 output rendering from blocks.
+render_outputs - output rendering from blocks.
 Renders: cleaned.md, discarded.md, evidence/, blocks.jsonl (updated).
 """
 import json

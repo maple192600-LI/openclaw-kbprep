@@ -286,7 +286,7 @@ def run(data: dict) -> None:
         _stderr_log("info", "classify_blocks", "Classification complete")
         # Stage 8: clean_rules
         _stderr_log("info", "clean_rules", "Applying cleaning rules")
-        from . import clean_rules_v4 as clean_mod
+        from . import clean_rules as clean_mod
         blocks = clean_mod.apply_clean_rules(blocks)
         with open(blocks_path, "w", encoding="utf-8") as f:
             for block in blocks:
@@ -320,7 +320,7 @@ def run(data: dict) -> None:
         _stderr_log("info", "render_outputs", "Output files rendered")
         # Stage 11: split
         _stderr_log("info", "split", "Splitting into chunks")
-        from . import split_v4 as split_mod
+        from . import split as split_mod
         splitter_type = override_splitter if override_splitter != "auto" else source_type
         split_result = split_mod.split_into_chunks(
             blocks=blocks,

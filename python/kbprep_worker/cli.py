@@ -1,5 +1,5 @@
 """
-CLI entry point for kbprep_worker v4.
+CLI entry point for kbprep_worker.
 
 Usage:
     uv run python -m kbprep_worker.cli <command> --json-stdin
@@ -41,7 +41,7 @@ def setup_stderr_logging() -> None:
 def main() -> None:
     setup_stderr_logging()
 
-    parser = argparse.ArgumentParser(prog="kbprep_worker", description="KBPrep v4 Python worker CLI")
+    parser = argparse.ArgumentParser(prog="kbprep_worker", description="KBPrep Python worker CLI")
     parser.add_argument("command", choices=[
         "setup-env", "setup_env", "preflight", "diagnose", "prepare", "apply-review", "apply_review", "prepare-batch", "prepare_batch"
     ], help="Command to execute")

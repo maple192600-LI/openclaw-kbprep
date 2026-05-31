@@ -1,8 +1,8 @@
 """
-split_v4 — v4 block-aware splitting.
+split - block-aware splitting.
 Splits blocks into Obsidian-manageable chunks with full traceability.
 
-Supports: pdf_like, markdown_note, generic_block splitters.
+Supports pdf_like, markdown_note, subtitle_transcript, and generic block splitting.
 """
 import hashlib
 import json

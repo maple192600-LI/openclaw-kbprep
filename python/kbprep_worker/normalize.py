@@ -1,5 +1,5 @@
 """
-normalize — v4 OCR fix and formatting normalization.
+normalize - OCR fix and formatting normalization.
 Only fixes formatting and OCR errors, never deletes knowledge.
 
 Input: converted.md + MinerU JSON artifacts + images/

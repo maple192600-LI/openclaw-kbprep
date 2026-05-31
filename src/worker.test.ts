@@ -276,7 +276,7 @@ describe("kbprep worker pipeline", () => {
         "import json, tempfile",
         "from pathlib import Path",
         "from kbprep_worker.blockify import blockify",
-        "from kbprep_worker.split_v4 import split_into_chunks",
+        "from kbprep_worker.split import split_into_chunks",
         "run_dir = Path(tempfile.mkdtemp(prefix='kbprep-page-map-'))",
         "content_list = run_dir / 'content_list.json'",
         "text = '\\n'.join([",
@@ -311,7 +311,7 @@ describe("kbprep worker pipeline", () => {
       [
         "import json, tempfile",
         "from pathlib import Path",
-        "from kbprep_worker.split_v4 import split_into_chunks",
+        "from kbprep_worker.split import split_into_chunks",
         "def blocks():",
         "    return [",
         "      {'block_id': 'p1h', 'status': 'keep', 'type': 'section_heading', 'text': '# Slide 1', 'heading_path': ['Slide 1'], 'page_start': 0, 'page_end': 0},",
@@ -596,7 +596,7 @@ describe("kbprep worker pipeline", () => {
   it("splits obvious promotional lines out of otherwise useful source blocks", () => {
     runPython(
       [
-        "from kbprep_worker.clean_rules_v4 import apply_clean_rules",
+        "from kbprep_worker.clean_rules import apply_clean_rules",
         "from kbprep_worker.quality import _detail_retention_stats",
         "blocks = [",
         "  {",
