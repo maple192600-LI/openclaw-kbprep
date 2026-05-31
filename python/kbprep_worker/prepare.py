@@ -31,6 +31,7 @@ from .supported_formats import (
     DIRECT_EXTENSIONS,
     EPUB_EXTENSIONS,
     FORMAT_BY_EXTENSION,
+    HTML_EXTENSIONS,
     IMAGE_EXTENSIONS,
     MARKDOWN_EXTENSIONS,
     MEDIA_EXTENSIONS,
@@ -176,7 +177,7 @@ def run(data: dict) -> None:
 
         if ext in direct_exts:
             text = _read_direct_source(input_p)
-            if ext in MARKDOWN_EXTENSIONS:
+            if ext in MARKDOWN_EXTENSIONS | HTML_EXTENSIONS:
                 text, local_image_artifacts = _copy_local_markdown_image_assets(
                     text=text,
                     input_path=input_p,
@@ -1311,9 +1312,11 @@ class _HTMLToMarkdownParser(HTMLParser):
         self.skip_depth = 0
         self.heading_level: int | None = None
         self.in_li = False
+        self.link_stack: list[tuple[str, int]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
+        attrs_dict = {key.lower(): value for key, value in attrs if value is not None}
         if tag in self.SKIP_TAGS:
             self.skip_depth += 1
             return
@@ -1327,6 +1330,15 @@ class _HTMLToMarkdownParser(HTMLParser):
             self.in_li = True
         elif tag == "br":
             self._flush()
+        elif tag == "a":
+            href = (attrs_dict.get("href") or "").strip()
+            if href:
+                self.link_stack.append((href, len(self.current)))
+        elif tag == "img":
+            src = (attrs_dict.get("src") or "").strip()
+            if src:
+                alt = (attrs_dict.get("alt") or attrs_dict.get("title") or "").strip()
+                self.current.append(f"![{alt}]({src})")
         elif tag in self.BLOCK_TAGS:
             self._flush()
 
@@ -1343,6 +1355,8 @@ class _HTMLToMarkdownParser(HTMLParser):
         elif tag == "li":
             self._flush(list_item=True)
             self.in_li = False
+        elif tag == "a":
+            self._close_link()
         elif tag in self.BLOCK_TAGS or tag in {"ul", "ol", "table"}:
             self._flush()
 
@@ -1352,6 +1366,16 @@ class _HTMLToMarkdownParser(HTMLParser):
         text = re.sub(r"\s+", " ", data).strip()
         if text:
             self.current.append(text)
+
+    def _close_link(self) -> None:
+        if not self.link_stack:
+            return
+        href, start = self.link_stack.pop()
+        if start > len(self.current):
+            return
+        label = " ".join(self.current[start:]).strip() or href
+        del self.current[start:]
+        self.current.append(f"[{label}]({href})")
 
     def _flush(self, heading_level: int | None = None, list_item: bool = False) -> None:
         text = " ".join(self.current).strip()

@@ -1436,6 +1436,13 @@ describe("kbprep worker pipeline", () => {
     try {
       const inputDir = path.join(root, "input");
       mkdirSync(inputDir);
+      const htmlAssetsDir = path.join(inputDir, "html-assets");
+      mkdirSync(htmlAssetsDir);
+      const png1x1 = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+        "base64",
+      );
+      writeFileSync(path.join(htmlAssetsDir, "step.png"), png1x1);
 
       const htmlPath = path.join(inputDir, "saved-page.html");
       const htmlOut = path.join(root, "html-out");
@@ -1443,6 +1450,8 @@ describe("kbprep worker pipeline", () => {
         htmlPath,
         [
           "<html><head><style>.ad{display:none}</style><script>alert('x')</script></head>",
+          "<p>工具地址：<a href=\"https://example.com/tool?mode=kbprep\">打开工具</a></p>",
+          "<p><img src=\"html-assets/step.png\" alt=\"后台截图\"></p>",
           "<body><nav>扫码入群领取体验卡</nav><article>",
           "<h1>操作教程</h1><p>第一步：打开平台后台，设置 threshold=0.8。</p>",
           "<ul><li>保留工具名、参数和失败原因。</li></ul>",
@@ -1473,8 +1482,11 @@ describe("kbprep worker pipeline", () => {
       expect(htmlEnvelope.data.strict_errors).toEqual([]);
       expect(htmlConverted).toContain("# 操作教程");
       expect(htmlConverted).toContain("threshold=0.8");
+      expect(htmlConverted).toContain("[打开工具](https://example.com/tool?mode=kbprep)");
+      expect(htmlConverted).toContain("![后台截图](images/html-assets/step.png)");
       expect(htmlConverted).toContain("- 保留工具名、参数和失败原因。");
       expect(htmlConverted).not.toContain("<script>");
+      expect(existsSync(path.join(htmlOut, "images", "html-assets", "step.png"))).toBe(true);
       expect(htmlConverted).not.toContain("扫码入群领取体验卡");
 
       const jsonPath = path.join(inputDir, "config.json");
