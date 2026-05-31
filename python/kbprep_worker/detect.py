@@ -1,76 +1,39 @@
-"""
-detect — source type detection based on file extension and content.
-"""
+"""Source type detection based on file extension."""
 from pathlib import Path
 
 from .supported_formats import (
-    AUDIO_EXTENSIONS as SHARED_AUDIO_EXTENSIONS,
+    AUDIO_EXTENSIONS,
+    CODE_EXTENSIONS,
+    EPUB_EXTENSIONS,
+    HTML_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    JSON_EXTENSIONS,
+    LEGACY_OFFICE_EXTENSIONS,
+    MARKDOWN_EXTENSIONS,
+    NOTEBOOK_EXTENSIONS,
+    OFFICE_XML_EXTENSIONS,
+    PLAIN_TEXT_EXTENSIONS,
     SOURCE_TYPE_BY_EXTENSION,
     SUBTITLE_EXTENSIONS,
-    VIDEO_EXTENSIONS as SHARED_VIDEO_EXTENSIONS,
+    TABLE_TEXT_EXTENSIONS,
+    VIDEO_EXTENSIONS,
 )
 
-# Extension → default source_type mapping
-EXTENSION_MAP: dict[str, str] = {
-    ".pdf": "pdf_like",
-    ".epub": "pdf_like",
-    ".mobi": "pdf_like",
-    ".docx": "pdf_like",
-    ".doc": "pdf_like",
-    ".pptx": "generic_block",
-    ".ppt": "generic_block",
-    ".xlsx": "pdf_like",
-    ".xls": "pdf_like",
-    ".md": "markdown_note",
-    ".markdown": "markdown_note",
-    ".txt": "generic_block",
-    ".rst": "generic_block",
-    ".adoc": "generic_block",
-    ".html": "generic_block",
-    ".htm": "generic_block",
-    ".json": "generic_block",
-    ".csv": "generic_block",
-    ".tsv": "generic_block",
-    ".vtt": "subtitle_transcript",
-    ".srt": "subtitle_transcript",
-    ".ass": "subtitle_transcript",
-    ".lrc": "subtitle_transcript",
-    ".mp3": "generic_block",
-    ".wav": "generic_block",
-    ".m4a": "generic_block",
-    ".aac": "generic_block",
-    ".flac": "generic_block",
-    ".mp4": "generic_block",
-    ".mov": "generic_block",
-    ".mkv": "generic_block",
-    ".webm": "generic_block",
-    ".png": "pdf_like",
-    ".jpg": "pdf_like",
-    ".jpeg": "pdf_like",
-    ".bmp": "pdf_like",
-    ".tiff": "pdf_like",
-    ".tif": "pdf_like",
-    ".webp": "pdf_like",
-    ".gif": "pdf_like",
-}
-
-TEXT_EXTENSIONS = {".md", ".markdown", ".txt", ".rst", ".adoc", ".csv", ".tsv", ".vtt", ".srt", ".ass", ".lrc"}
-AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
-
+TEXT_EXTENSIONS = (
+    MARKDOWN_EXTENSIONS
+    | PLAIN_TEXT_EXTENSIONS
+    | TABLE_TEXT_EXTENSIONS
+    | HTML_EXTENSIONS
+    | JSON_EXTENSIONS
+    | SUBTITLE_EXTENSIONS
+)
 EXTENSION_MAP = SOURCE_TYPE_BY_EXTENSION
-TEXT_EXTENSIONS = {
-    ".md", ".markdown", ".txt", ".rst", ".adoc", ".csv", ".tsv",
-    ".html", ".htm", ".json", *SUBTITLE_EXTENSIONS,
-}
-AUDIO_EXTENSIONS = SHARED_AUDIO_EXTENSIONS
-VIDEO_EXTENSIONS = SHARED_VIDEO_EXTENSIONS
 
 
 def detect_source_type(file_path: str) -> str:
-    """Detect source_type from file extension. Returns one of pdf_like, markdown_note, generic_block."""
+    """Detect processing source_type from file extension."""
     ext = Path(file_path).suffix.lower()
-    return EXTENSION_MAP.get(ext, "generic_block")
+    return SOURCE_TYPE_BY_EXTENSION.get(ext, "generic_block")
 
 
 def detect_source_family(file_path: str) -> str:
@@ -84,16 +47,24 @@ def detect_source_family(file_path: str) -> str:
         return "presentation"
     if ext in {".xlsx", ".xls", ".ods"}:
         return "spreadsheet"
-    if ext in {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".gif"}:
+    if ext in EPUB_EXTENSIONS or ext == ".mobi":
+        return "ebook"
+    if ext in IMAGE_EXTENSIONS:
         return "image"
     if ext in AUDIO_EXTENSIONS:
         return "audio"
     if ext in VIDEO_EXTENSIONS:
         return "video"
-    if ext in {".vtt", ".srt", ".ass", ".lrc"}:
+    if ext in SUBTITLE_EXTENSIONS:
         return "subtitle_transcript"
+    if ext in NOTEBOOK_EXTENSIONS:
+        return "notebook"
+    if ext in CODE_EXTENSIONS:
+        return "code"
     if ext in TEXT_EXTENSIONS:
         return "text"
+    if ext in OFFICE_XML_EXTENSIONS | LEGACY_OFFICE_EXTENSIONS:
+        return "office"
     return "unknown"
 
 

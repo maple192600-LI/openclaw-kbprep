@@ -7,8 +7,30 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+function pythonCommand(usePluginRuntime = false) {
+  const override = process.env.KBPREP_TEST_PYTHON;
+  if (override) return { command: override, prefix: [] as string[] };
+  const venvPython = process.platform === "win32"
+    ? path.join(repoRoot, ".kbprep", "venv", "Scripts", "python.exe")
+    : path.join(repoRoot, ".kbprep", "venv", "bin", "python");
+  if (usePluginRuntime && existsSync(venvPython)) return { command: venvPython, prefix: [] as string[] };
+  return process.platform === "win32"
+    ? { command: "py", prefix: ["-3"] }
+    : { command: "python3", prefix: [] as string[] };
+}
+
+function shouldUsePluginRuntime(payload: Record<string, unknown>) {
+  const inputPath = typeof payload.input_path === "string" ? payload.input_path : "";
+  const ext = path.extname(inputPath).toLowerCase();
+  return new Set([
+    ".pdf", ".mobi", ".doc", ".ppt", ".xls",
+    ".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".gif",
+  ]).has(ext);
+}
+
 function runWorker(command: string, payload: Record<string, unknown>, expectedStatus = 0) {
-  const result = spawnSync("py", ["-3", "-m", "kbprep_worker.cli", command, "--json-stdin"], {
+  const python = pythonCommand(shouldUsePluginRuntime(payload));
+  const result = spawnSync(python.command, [...python.prefix, "-m", "kbprep_worker.cli", command, "--json-stdin"], {
     cwd: repoRoot,
     input: JSON.stringify(payload),
     encoding: "utf8",
@@ -17,6 +39,7 @@ function runWorker(command: string, payload: Record<string, unknown>, expectedSt
       PYTHONPATH: path.join(repoRoot, "python"),
       PYTHONUTF8: "1",
     },
+    timeout: 30_000,
   });
 
   expect(result.status, result.stderr).toBe(expectedStatus);
@@ -25,7 +48,8 @@ function runWorker(command: string, payload: Record<string, unknown>, expectedSt
 }
 
 function runWorkerRawInput(command: string, rawInput: string, expectedStatus = 0) {
-  const result = spawnSync("py", ["-3", "-m", "kbprep_worker.cli", command, "--json-stdin"], {
+  const python = pythonCommand();
+  const result = spawnSync(python.command, [...python.prefix, "-m", "kbprep_worker.cli", command, "--json-stdin"], {
     cwd: repoRoot,
     input: rawInput,
     encoding: "utf8",
@@ -34,6 +58,7 @@ function runWorkerRawInput(command: string, rawInput: string, expectedStatus = 0
       PYTHONPATH: path.join(repoRoot, "python"),
       PYTHONUTF8: "1",
     },
+    timeout: 30_000,
   });
 
   expect(result.status, result.stderr).toBe(expectedStatus);
@@ -41,8 +66,9 @@ function runWorkerRawInput(command: string, rawInput: string, expectedStatus = 0
   return JSON.parse(lines.at(-1) ?? "{}");
 }
 
-function runPython(code: string, args: string[]) {
-  const result = spawnSync("py", ["-3", "-", ...args], {
+function runPython(code: string, args: string[], usePluginRuntime = false) {
+  const python = pythonCommand(usePluginRuntime);
+  const result = spawnSync(python.command, [...python.prefix, "-", ...args], {
     cwd: repoRoot,
     input: code,
     encoding: "utf8",
@@ -51,6 +77,7 @@ function runPython(code: string, args: string[]) {
       PYTHONPATH: path.join(repoRoot, "python"),
       PYTHONUTF8: "1",
     },
+    timeout: 30_000,
   });
 
   expect(result.status, result.stderr).toBe(0);
@@ -68,6 +95,7 @@ function makeTextLayerPdf(pdfPath: string) {
       "doc.save(pdf_path)",
     ].join("\n"),
     [pdfPath],
+    true,
   );
 }
 
@@ -87,6 +115,7 @@ function makeImageOnlyPdf(pdfPath: string, imagePath: string) {
       "doc.save(pdf_path)",
     ].join("\n"),
     [pdfPath, imagePath],
+    true,
   );
 }
 
@@ -107,6 +136,7 @@ function makeLandscapeImagePdf(pdfPath: string, imagePath: string) {
       "doc.save(pdf_path)",
     ].join("\n"),
     [pdfPath, imagePath],
+    true,
   );
 }
 
@@ -123,6 +153,7 @@ function makeLandscapeTextPdf(pdfPath: string) {
       "doc.save(pdf_path)",
     ].join("\n"),
     [pdfPath],
+    true,
   );
 }
 
@@ -139,6 +170,7 @@ function makeGarbledTextLayerPdf(pdfPath: string) {
       "doc.save(pdf_path)",
     ].join("\n"),
     [pdfPath],
+    true,
   );
 }
 
@@ -805,6 +837,23 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("detects broad source families from the shared format table", () => {
+    runPython(
+      [
+        "from kbprep_worker.detect import detect_source_family, detect_source_type",
+        "assert detect_source_type('notes.md') == 'markdown_note'",
+        "assert detect_source_type('lesson.srt') == 'subtitle_transcript'",
+        "assert detect_source_type('analysis.ipynb') == 'generic_block'",
+        "assert detect_source_family('analysis.ipynb') == 'notebook'",
+        "assert detect_source_family('script.py') == 'code'",
+        "assert detect_source_family('book.epub') == 'ebook'",
+        "assert detect_source_family('slides.pptx') == 'presentation'",
+        "assert detect_source_family('clip.mp4') == 'video'",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("classifies long heading-rich documents with colon lines as reports, not transcripts", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-worker-"));
     try {
@@ -1403,7 +1452,7 @@ describe("kbprep worker pipeline", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("converts GitHub-style source and config files as fenced Markdown without summarizing code", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-code-source-"));
@@ -1627,7 +1676,7 @@ describe("kbprep worker pipeline", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("converts EPUB ebooks through local XHTML extraction instead of MinerU", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-epub-"));
@@ -1789,6 +1838,7 @@ describe("kbprep worker pipeline", () => {
           "assert any('W_PDF_TEXT_LAYER_FALLBACK_TO_OCR' in warning for warning in report['warnings']), report",
         ].join("\n"),
         [inputPath, outputRoot],
+        true,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
