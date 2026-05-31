@@ -27,6 +27,8 @@ Expected output:
 - `images/`: copied local or embedded image assets referenced by the Markdown output
 - `quality_report.json`: retention and quality checks
 
+`discarded.md`, `review_needed.md`, and `evidence/marketing_pages.md` include compact trace comments before each block: block id, type, page range when available, heading path, risk tags, confidence, and reason. The text itself is kept verbatim so a human can recover or audit anything that was removed from `cleaned.md`.
+
 Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when you want an AI or human to review uncertain blocks. Use `mode="ai_review"` only when OpenClaw subagents are available and you accept the extra model call.
 
 ## Tools
