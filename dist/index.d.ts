@@ -1,6 +1,7 @@
 export declare function resolvePythonPath(startPath: string, config?: PluginConfig): string;
 export declare function ensurePythonRuntime(config?: PluginConfig): Promise<string>;
 export declare function pluginVenvPythonPath(): string;
+export declare function isRuntimeMarkerCurrent(marker: unknown, config?: PluginConfig): boolean;
 type PluginConfig = {
     device_override?: "auto" | "cuda" | "cpu";
     max_cpu_threads?: number;

@@ -3,12 +3,14 @@ import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 import { callWorker } from "./worker.js";
 import { maybeRunAiReview } from "./aiReview.js";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+const RUNTIME_MARKER_SCHEMA = "kbprep.plugin_venv.v2";
+const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]==3.2.1";
 export function resolvePythonPath(startPath, config) {
     const pluginPython = pluginVenvPythonPath();
-    if (isPluginVenvReady())
+    if (isPluginVenvReady(config))
         return pluginPython;
     if (shouldSkipAutoSetupForTests()) {
         if (config?.python_path?.trim())
@@ -21,11 +23,12 @@ export function resolvePythonPath(startPath, config) {
 }
 export async function ensurePythonRuntime(config) {
     const pythonPath = pluginVenvPythonPath();
-    if (isPluginVenvReady())
+    if (isPluginVenvReady(config))
         return pythonPath;
     if (shouldSkipAutoSetupForTests())
         return resolvePythonPath(pluginRootDir(), config);
     const venvDir = pluginVenvDir();
+    cleanupStalePluginRuntime(config);
     mkdirSync(dirname(venvDir), { recursive: true });
     const bootstrap = bootstrapPythonCommand(config);
     await runSetupCommand(bootstrap.command, [...bootstrap.args, "-m", "venv", venvDir], "create plugin-local Python virtual environment", 5 * 60_000);
@@ -33,9 +36,15 @@ export async function ensurePythonRuntime(config) {
     await runSetupCommand(pythonPath, ["-m", "pip", "install", "-e", pluginPythonProjectDir()], "install kbprep worker dependencies into plugin-local Python virtual environment", 60 * 60_000);
     const setupResult = await runSetupCommand(pythonPath, ["-m", "kbprep_worker.cli", "setup-env", "--json-stdin"], "detect hardware and tune plugin-local Python dependencies", 30 * 60_000, JSON.stringify({ device_override: config?.device_override ?? "auto" }));
     writeFileSync(pluginVenvReadyMarker(), JSON.stringify({
-        schema: "kbprep.plugin_venv.v1",
+        schema: RUNTIME_MARKER_SCHEMA,
         created_at: new Date().toISOString(),
+        plugin_version: pluginPackageVersion(),
         python_executable: pythonPath,
+        device_override: effectiveDeviceOverride(config),
+        python_project: {
+            path: pluginPythonProjectDir(),
+            dependency_spec: PYTHON_WORKER_DEPENDENCY_SPEC,
+        },
         setup_env: parseSetupEnvelope(setupResult.stdout),
     }, null, 2), "utf-8");
     return pythonPath;
@@ -56,8 +65,11 @@ function pluginVenvDir() {
 function pluginVenvReadyMarker() {
     return join(pluginRootDir(), ".kbprep", "runtime-ready.json");
 }
-function isPluginVenvReady() {
-    return existsSync(pluginVenvPythonPath()) && existsSync(pluginVenvReadyMarker());
+function isPluginVenvReady(config) {
+    if (!existsSync(pluginVenvPythonPath()) || !existsSync(pluginVenvReadyMarker())) {
+        return false;
+    }
+    return isRuntimeMarkerCurrent(readRuntimeMarker(), config);
 }
 export function pluginVenvPythonPath() {
     const venvDir = pluginVenvDir();
@@ -67,6 +79,47 @@ export function pluginVenvPythonPath() {
 }
 function shouldSkipAutoSetupForTests() {
     return process.env.VITEST === "true" || process.env.KBPREP_SKIP_AUTO_SETUP === "1";
+}
+function cleanupStalePluginRuntime(config) {
+    if (!existsSync(pluginVenvDir()) && !existsSync(pluginVenvReadyMarker()))
+        return;
+    if (isPluginVenvReady(config))
+        return;
+    rmSync(pluginVenvDir(), { recursive: true, force: true });
+    rmSync(pluginVenvReadyMarker(), { force: true });
+}
+function readRuntimeMarker() {
+    try {
+        return JSON.parse(readFileSync(pluginVenvReadyMarker(), "utf-8"));
+    }
+    catch {
+        return null;
+    }
+}
+export function isRuntimeMarkerCurrent(marker, config) {
+    if (!marker || typeof marker !== "object")
+        return false;
+    const data = marker;
+    const pythonProject = data.python_project;
+    const setupEnv = data.setup_env;
+    return (data.schema === RUNTIME_MARKER_SCHEMA
+        && data.plugin_version === pluginPackageVersion()
+        && data.python_executable === pluginVenvPythonPath()
+        && data.device_override === effectiveDeviceOverride(config)
+        && pythonProject?.dependency_spec === PYTHON_WORKER_DEPENDENCY_SPEC
+        && setupEnv?.ok === true);
+}
+function effectiveDeviceOverride(config) {
+    return config?.device_override ?? "auto";
+}
+function pluginPackageVersion() {
+    try {
+        const pkg = JSON.parse(readFileSync(join(pluginRootDir(), "package.json"), "utf-8"));
+        return String(pkg.version || "unknown");
+    }
+    catch {
+        return "unknown";
+    }
 }
 function bootstrapPythonCommand(config) {
     if (config?.python_path?.trim())

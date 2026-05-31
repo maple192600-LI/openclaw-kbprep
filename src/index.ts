@@ -3,13 +3,16 @@ import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 import { callWorker } from "./worker.js";
 import { maybeRunAiReview } from "./aiReview.js";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const RUNTIME_MARKER_SCHEMA = "kbprep.plugin_venv.v2";
+const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]==3.2.1";
+
 export function resolvePythonPath(startPath: string, config?: PluginConfig): string {
   const pluginPython = pluginVenvPythonPath();
-  if (isPluginVenvReady()) return pluginPython;
+  if (isPluginVenvReady(config)) return pluginPython;
 
   if (shouldSkipAutoSetupForTests()) {
     if (config?.python_path?.trim()) return config.python_path.trim();
@@ -24,11 +27,12 @@ export function resolvePythonPath(startPath: string, config?: PluginConfig): str
 
 export async function ensurePythonRuntime(config?: PluginConfig): Promise<string> {
   const pythonPath = pluginVenvPythonPath();
-  if (isPluginVenvReady()) return pythonPath;
+  if (isPluginVenvReady(config)) return pythonPath;
 
   if (shouldSkipAutoSetupForTests()) return resolvePythonPath(pluginRootDir(), config);
 
   const venvDir = pluginVenvDir();
+  cleanupStalePluginRuntime(config);
   mkdirSync(dirname(venvDir), { recursive: true });
   const bootstrap = bootstrapPythonCommand(config);
   await runSetupCommand(
@@ -57,9 +61,15 @@ export async function ensurePythonRuntime(config?: PluginConfig): Promise<string
     JSON.stringify({ device_override: config?.device_override ?? "auto" }),
   );
   writeFileSync(pluginVenvReadyMarker(), JSON.stringify({
-    schema: "kbprep.plugin_venv.v1",
+    schema: RUNTIME_MARKER_SCHEMA,
     created_at: new Date().toISOString(),
+    plugin_version: pluginPackageVersion(),
     python_executable: pythonPath,
+    device_override: effectiveDeviceOverride(config),
+    python_project: {
+      path: pluginPythonProjectDir(),
+      dependency_spec: PYTHON_WORKER_DEPENDENCY_SPEC,
+    },
     setup_env: parseSetupEnvelope(setupResult.stdout),
   }, null, 2), "utf-8");
   return pythonPath;
@@ -85,8 +95,11 @@ function pluginVenvReadyMarker(): string {
   return join(pluginRootDir(), ".kbprep", "runtime-ready.json");
 }
 
-function isPluginVenvReady(): boolean {
-  return existsSync(pluginVenvPythonPath()) && existsSync(pluginVenvReadyMarker());
+function isPluginVenvReady(config?: PluginConfig): boolean {
+  if (!existsSync(pluginVenvPythonPath()) || !existsSync(pluginVenvReadyMarker())) {
+    return false;
+  }
+  return isRuntimeMarkerCurrent(readRuntimeMarker(), config);
 }
 
 export function pluginVenvPythonPath(): string {
@@ -98,6 +111,50 @@ export function pluginVenvPythonPath(): string {
 
 function shouldSkipAutoSetupForTests(): boolean {
   return process.env.VITEST === "true" || process.env.KBPREP_SKIP_AUTO_SETUP === "1";
+}
+
+function cleanupStalePluginRuntime(config?: PluginConfig): void {
+  if (!existsSync(pluginVenvDir()) && !existsSync(pluginVenvReadyMarker())) return;
+  if (isPluginVenvReady(config)) return;
+  rmSync(pluginVenvDir(), { recursive: true, force: true });
+  rmSync(pluginVenvReadyMarker(), { force: true });
+}
+
+function readRuntimeMarker(): unknown {
+  try {
+    return JSON.parse(readFileSync(pluginVenvReadyMarker(), "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+export function isRuntimeMarkerCurrent(marker: unknown, config?: PluginConfig): boolean {
+  if (!marker || typeof marker !== "object") return false;
+  const data = marker as Record<string, unknown>;
+  const pythonProject = data.python_project as Record<string, unknown> | undefined;
+  const setupEnv = data.setup_env as Record<string, unknown> | undefined;
+
+  return (
+    data.schema === RUNTIME_MARKER_SCHEMA
+    && data.plugin_version === pluginPackageVersion()
+    && data.python_executable === pluginVenvPythonPath()
+    && data.device_override === effectiveDeviceOverride(config)
+    && pythonProject?.dependency_spec === PYTHON_WORKER_DEPENDENCY_SPEC
+    && setupEnv?.ok === true
+  );
+}
+
+function effectiveDeviceOverride(config?: PluginConfig): "auto" | "cuda" | "cpu" {
+  return config?.device_override ?? "auto";
+}
+
+function pluginPackageVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(join(pluginRootDir(), "package.json"), "utf-8"));
+    return String(pkg.version || "unknown");
+  } catch {
+    return "unknown";
+  }
 }
 
 function bootstrapPythonCommand(config?: PluginConfig): { command: string; args: string[] } {

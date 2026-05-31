@@ -1,8 +1,9 @@
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import entry, { pluginVenvPythonPath, resolvePythonPath } from "./index.js";
+import entry, { isRuntimeMarkerCurrent, pluginVenvPythonPath, resolvePythonPath } from "./index.js";
 import { getToolPluginMetadata } from "openclaw/plugin-sdk/tool-plugin";
 
 type RegisteredTool = {
@@ -44,6 +45,26 @@ describe("openclaw-kbprep", () => {
     expect(runtimePath).toContain(join(".kbprep", "venv"));
     expect(runtimePath).toContain(process.platform === "win32" ? join("Scripts", "python.exe") : join("bin", "python"));
     expect(resolvePythonPath(join(tmpdir(), "kbprep-output"))).not.toContain(join(".openclaw", "workspace-wiki"));
+  });
+
+  it("rejects stale plugin-local Python runtime markers instead of reusing wrong environments", () => {
+    const packageVersion = JSON.parse(readFileSync("package.json", "utf-8")).version;
+    const validMarker = {
+      schema: "kbprep.plugin_venv.v2",
+      plugin_version: packageVersion,
+      python_executable: pluginVenvPythonPath(),
+      device_override: "auto",
+      python_project: {
+        dependency_spec: "mineru[all]==3.2.1",
+      },
+      setup_env: { ok: true, data: { device: "cpu" } },
+    };
+
+    expect(isRuntimeMarkerCurrent(validMarker)).toBe(true);
+    expect(isRuntimeMarkerCurrent({ ...validMarker, schema: "kbprep.plugin_venv.v1" })).toBe(false);
+    expect(isRuntimeMarkerCurrent({ ...validMarker, plugin_version: "0.4.0" })).toBe(false);
+    expect(isRuntimeMarkerCurrent({ ...validMarker, setup_env: { ok: false } })).toBe(false);
+    expect(isRuntimeMarkerCurrent(validMarker, { device_override: "cpu" })).toBe(false);
   });
 
   it("runs preflight through the OpenClaw tool registration path", async () => {

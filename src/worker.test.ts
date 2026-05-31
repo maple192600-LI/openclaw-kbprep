@@ -1711,7 +1711,7 @@ describe("kbprep worker pipeline", () => {
       expect(latest.review_applied_at).toBeTypeOf("number");
       expect(updatedQuality.runtime_cache_key).toBeTypeOf("string");
       expect(updatedQuality.runtime.python_executable).toContain("python");
-      expect(updatedQuality.plugin_version).toBe("0.4.1");
+      expect(updatedQuality.plugin_version).toBe(JSON.parse(readFileSync("package.json", "utf8")).version);
       expect(updatedQuality.review_applied_at).toBeTypeOf("number");
       expect(reviewNeeded).toContain("扫码加入社群领取体验卡");
     } finally {
