@@ -164,6 +164,9 @@ function makeOfficeFixtures(docxPath: string, pptxPath: string, xlsxPath: string
       "  '[Content_Types].xml': '<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"/>',",
       "  'ppt/slides/slide1.xml': '''<p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree>",
       "    <p:sp><p:txBody><a:p><a:r><a:t>PPT Tutorial Slide</a:t></a:r></a:p><a:p><a:r><a:t>Keep platform setup steps and failure_reason=timeout.</a:t></a:r></a:p></p:txBody></p:sp>",
+      "  </p:spTree></p:cSld></p:sld>''',",
+      "  'ppt/slides/slide2.xml': '''<p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree>",
+      "    <p:sp><p:txBody><a:p><a:r><a:t>PPT Case Slide</a:t></a:r></a:p><a:p><a:r><a:t>Record retry_count=3 and keep the failed account example.</a:t></a:r></a:p></p:txBody></p:sp>",
       "  </p:spTree></p:cSld></p:sld>'''",
       "})",
       "write_zip(xlsx_path, {",
@@ -1447,7 +1450,7 @@ describe("kbprep worker pipeline", () => {
           input: pptxPath,
           out: path.join(root, "pptx-out"),
           format: "pptx",
-          expected: ["# Slide 1: PPT Tutorial Slide", "failure_reason=timeout"],
+          expected: ["# Slide 1: PPT Tutorial Slide", "failure_reason=timeout", "# Slide 2: PPT Case Slide", "retry_count=3"],
         },
         {
           input: xlsxPath,
@@ -1490,6 +1493,17 @@ describe("kbprep worker pipeline", () => {
         expect(conversionReport.diagnosed_format).toBe(item.format);
         expect(conversionReport.diagnosed_pipeline).toBe("office_xml");
         expect(conversionReport.diagnosed_strategy).toBe("office_xml");
+        if (item.format === "pptx") {
+          expect(conversionReport.diagnosed_split_strategy).toBe("preserve_slide_or_page_order");
+          expect(conversionReport.mineru_artifacts.content_list_path).toContain("pptx_content_list.json");
+          const manifest = readFileSync(path.join(envelope.data.run_dir, "chunk_manifest.jsonl"), "utf8")
+            .trim()
+            .split(/\r?\n/)
+            .map((line) => JSON.parse(line));
+          expect(manifest.map((entry) => entry.split_strategy)).toContain("preserve_slide_or_page_order");
+          expect(manifest.some((entry) => entry.page_start === 0)).toBe(true);
+          expect(manifest.some((entry) => entry.page_start === 1)).toBe(true);
+        }
         for (const expected of item.expected) {
           expect(converted).toContain(expected);
           expect(cleaned).toContain(expected);

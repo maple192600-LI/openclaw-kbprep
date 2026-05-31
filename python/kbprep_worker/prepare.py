@@ -179,6 +179,9 @@ def run(data: dict) -> None:
             _validate_convertible_container(input_p)
             text, office_warnings = _office_xml_to_markdown(input_p)
             converted_path.write_text(text, encoding="utf-8")
+            if ext == ".pptx":
+                mineru_artifacts = _write_pptx_content_list(text, run_dir)
+                diagnosis["split_strategy"] = "preserve_slide_or_page_order"
             warnings.extend(office_warnings)
             _stderr_log("info", "convert", "Office XML converted directly")
         elif ext in EPUB_EXTENSIONS:
@@ -926,6 +929,36 @@ def _pptx_to_markdown(zf: zipfile.ZipFile) -> str:
             if notes:
                 sections.append("\n\n".join([f"## Slide {idx} Notes", *notes]))
     return "\n\n".join(sections)
+
+
+def _write_pptx_content_list(text: str, run_dir: Path) -> dict:
+    content_list: list[dict] = []
+    matches = list(re.finditer(r"(?m)^# Slide\s+(\d+)(?::[^\n]*)?$", text))
+    for i, match in enumerate(matches):
+        slide_no = int(match.group(1))
+        start = match.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        slide_text = text[start:end].strip()
+        if slide_text:
+            content_list.append({
+                "page_idx": slide_no - 1,
+                "type": "text",
+                "text": slide_text,
+            })
+
+    if not content_list:
+        return {}
+
+    path = run_dir / "pptx_content_list.json"
+    path.write_text(json.dumps(content_list, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "source_md_path": str(run_dir / "converted.md"),
+        "content_list_path": str(path),
+        "content_list_v2_path": None,
+        "middle_json_path": None,
+        "assets_dir": None,
+        "converter": "office_xml_pptx",
+    }
 
 
 def _xlsx_to_markdown(zf: zipfile.ZipFile) -> str:
