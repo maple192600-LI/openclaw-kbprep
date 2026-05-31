@@ -691,6 +691,27 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("fails quality when CTA pollution remains in kept body blocks", () => {
+    runPython(
+      [
+        "from pathlib import Path",
+        "import tempfile",
+        "from kbprep_worker.quality import run_quality_check",
+        "run_dir = Path(tempfile.mkdtemp())",
+        "(run_dir / 'chunks').mkdir()",
+        "(run_dir / 'chunks' / 'chunk_001.md').write_text('正文知识段落' * 120, encoding='utf-8')",
+        "(run_dir / 'cleaned.md').write_text('扫码入群领取体验卡\\n\\n案例：平台规则里出现扫码入群时，要记录 risk_label=引流违规。\\n', encoding='utf-8')",
+        "blocks = [",
+        "  {'block_id': 'cta-leak', 'status': 'keep', 'type': 'paragraph', 'text': '扫码入群领取体验卡', 'protected': False},",
+        "  {'block_id': 'case-context', 'status': 'keep', 'type': 'paragraph', 'text': '案例：平台规则里出现扫码入群时，要记录 risk_label=引流违规。', 'protected': False},",
+        "]",
+        "report = run_quality_check(blocks, str(run_dir), 'markdown_note', {'file_id': 'cta-leak-test'})",
+        "assert any('CTA patterns found' in err for err in report['strict_errors']), report",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("reports concrete detail retention and fails when detail-bearing blocks are discarded", () => {
     runPython(
       [
