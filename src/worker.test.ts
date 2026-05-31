@@ -1239,6 +1239,71 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("removes English transcript filler while keeping tutorial details", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-english-transcript-filler-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "lesson.srt");
+      writeFileSync(
+        sourcePath,
+        [
+          "1",
+          "00:00:01,000 --> 00:00:02,000",
+          "Hey guys",
+          "",
+          "2",
+          "00:00:03,000 --> 00:00:06,000",
+          "Step 1: open the dashboard and set threshold=0.8.",
+          "",
+          "3",
+          "00:00:07,000 --> 00:00:11,000",
+          "My failure lesson: keep failure_reason=timeout and retry_count=3 for review.",
+          "",
+          "4",
+          "00:00:12,000 --> 00:00:14,000",
+          "Don't forget to like and subscribe",
+          "",
+          "5",
+          "00:00:15,000 --> 00:00:16,000",
+          "Thanks for watching",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        profile: "tutorial",
+        mode: "rules_only",
+        language: "en",
+        force: true,
+      });
+
+      const cleaned = readFileSync(path.join(outputRoot, "cleaned.md"), "utf8");
+      const discarded = readFileSync(path.join(outputRoot, "discarded.md"), "utf8");
+      const quality = JSON.parse(readFileSync(path.join(outputRoot, "quality_report.json"), "utf8"));
+
+      expect(envelope.data.strict_errors).toEqual([]);
+      expect(cleaned).toContain("Step 1: open the dashboard");
+      expect(cleaned).toContain("threshold=0.8");
+      expect(cleaned).toContain("failure_reason=timeout");
+      expect(cleaned).toContain("retry_count=3");
+      expect(cleaned).not.toContain("Hey guys");
+      expect(cleaned).not.toContain("like and subscribe");
+      expect(cleaned).not.toContain("Thanks for watching");
+      expect(discarded).toContain("Hey guys");
+      expect(discarded).toContain("like and subscribe");
+      expect(discarded).toContain("Thanks for watching");
+      expect(quality.detail_retention.operation_step.total_blocks).toBeGreaterThanOrEqual(1);
+      expect(quality.output_retention.cleaned_md.parameter.missing_count).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("treats English Step N tutorial lines as protected operation steps", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-english-steps-"));
     try {

@@ -19,7 +19,13 @@ TRANSCRIPT_FILLER_RE = re.compile(
     r"\u611f\u8c22(?:\u5927\u5bb6)?\u89c2\u770b|\u8c22\u8c22\u5927\u5bb6|"
     r"(?:\u672c\u671f|\u4eca\u5929)(?:.{0,12})(?:\u5230\u8fd9\u91cc|\u5c31\u5230\u8fd9\u91cc)|"
     r"\u8bb0\u5f97(?:\u70b9\u8d5e|\u5173\u6ce8|\u6536\u85cf|\u8f6c\u53d1|\u4e09\u8fde).{0,20}|"
-    r"\u70b9\u8d5e\u5173\u6ce8.{0,20}|\u4e0b\u671f\u89c1|\u62dc\u62dc|bye\s*bye"
+    r"\u70b9\u8d5e\u5173\u6ce8.{0,20}|\u4e0b\u671f\u89c1|\u62dc\u62dc|bye\s*bye|"
+    r"(?:hey|hi|hello)\s+(?:guys|everyone|folks|friends)|"
+    r"welcome\s+back(?:\s+to\s+(?:my|the)\s+channel)?|"
+    r"(?:before\s+we\s+start\s+)?(?:don'?t\s+forget\s+to\s+)?(?:like|subscribe|comment|share).{0,40}|"
+    r"(?:smash|hit)\s+the\s+(?:like|subscribe)\s+button.{0,30}|"
+    r"thanks?\s+for\s+watching|see\s+you\s+(?:next\s+time|in\s+the\s+next\s+video)|"
+    r"that'?s\s+(?:it|all)\s+for\s+(?:today|this\s+video)"
     r")[\s\u3002\uff01!\uff1f?]*$",
     re.IGNORECASE,
 )
