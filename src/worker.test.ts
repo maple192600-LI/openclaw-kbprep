@@ -827,6 +827,34 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("writes trace metadata for discarded, review, and evidence outputs", () => {
+    runPython(
+      [
+        "from pathlib import Path",
+        "from tempfile import TemporaryDirectory",
+        "from kbprep_worker.render_outputs import render",
+        "with TemporaryDirectory() as tmp:",
+        "    run_dir = Path(tmp)",
+        "    blocks = [",
+        "        {'block_id': 'keep1', 'status': 'keep', 'type': 'paragraph', 'text': '正文保留。', 'heading_path': ['第一章'], 'page_start': 0, 'page_end': 0},",
+        "        {'block_id': 'drop1', 'status': 'discard', 'type': 'marketing_cta', 'text': '扫码入群领取体验卡', 'heading_path': ['第一章', '广告页'], 'page_start': 3, 'page_end': 3, 'risk_tags': ['cta'], 'confidence': 0.95, 'reason': 'matches discard pattern: marketing_cta'},",
+        "        {'block_id': 'review1', 'status': 'review', 'type': 'paragraph', 'text': '这段需要人工确认。', 'heading_path': ['第二章'], 'page_start': 4, 'page_end': 5, 'risk_tags': ['low_confidence'], 'confidence': 0.52, 'reason': 'low confidence'},",
+        "        {'block_id': 'evidence1', 'status': 'evidence', 'type': 'testimonial', 'text': '学员评价截图说明。', 'heading_path': ['证据'], 'page_start': 6, 'page_end': 6, 'confidence': 0.80, 'reason': 'matches evidence pattern: testimonial'},",
+        "    ]",
+        "    render(blocks, str(run_dir), 'sha', 'run')",
+        "    discarded = (run_dir / 'discarded.md').read_text(encoding='utf-8')",
+        "    review = (run_dir / 'review_needed.md').read_text(encoding='utf-8')",
+        "    evidence = (run_dir / 'evidence' / 'marketing_pages.md').read_text(encoding='utf-8')",
+        "    assert '[drop1]' in discarded and 'page=3' in discarded and 'risk_tags=[\"cta\"]' in discarded, discarded",
+        "    assert 'heading=[\"第一章\", \"广告页\"]' in discarded and 'confidence=0.95' in discarded, discarded",
+        "    assert 'reason=matches discard pattern: marketing_cta' in discarded, discarded",
+        "    assert '[review1]' in review and 'page=4-5' in review and 'risk_tags=[\"low_confidence\"]' in review, review",
+        "    assert '[evidence1]' in evidence and 'type=testimonial' in evidence and 'confidence=0.80' in evidence, evidence",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("splits obvious promotional lines out of otherwise useful source blocks", () => {
     runPython(
       [

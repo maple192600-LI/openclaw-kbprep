@@ -32,11 +32,8 @@ def render(blocks: list[dict], run_dir: str, source_hash: str, run_id: str) -> N
     discard_blocks = [b for b in blocks if b.get("status") == "discard"]
     discarded_lines = []
     for block in discard_blocks:
-        bid = block.get("block_id", "?")
-        btype = block.get("type", "unknown")
-        reason = block.get("reason", "")
         text = block.get("text", "").strip()
-        discarded_lines.append(f"<!-- [{bid}] type={btype} reason={reason} -->")
+        discarded_lines.append(_block_meta_comment(block, include_reason=True))
         if text:
             discarded_lines.append(text)
         discarded_lines.append("")
@@ -51,10 +48,8 @@ def render(blocks: list[dict], run_dir: str, source_hash: str, run_id: str) -> N
     if evidence_blocks:
         evidence_lines = []
         for block in evidence_blocks:
-            bid = block.get("block_id", "?")
-            btype = block.get("type", "unknown")
             text = block.get("text", "").strip()
-            evidence_lines.append(f"<!-- [{bid}] type={btype} -->")
+            evidence_lines.append(_block_meta_comment(block, include_reason=True))
             if text:
                 evidence_lines.append(text)
             evidence_lines.append("")
@@ -67,11 +62,8 @@ def render(blocks: list[dict], run_dir: str, source_hash: str, run_id: str) -> N
     if review_blocks:
         review_lines = []
         for block in review_blocks:
-            bid = block.get("block_id", "?")
-            btype = block.get("type", "unknown")
-            reason = block.get("reason", "")
             text = block.get("text", "").strip()
-            review_lines.append(f"<!-- [{bid}] type={btype} reason={reason} -->")
+            review_lines.append(_block_meta_comment(block, include_reason=True))
             if text:
                 review_lines.append(text)
             review_lines.append("")
@@ -159,6 +151,46 @@ def _readable_text(block: dict) -> str:
     if _is_internal_page_marker(text):
         return ""
     return text
+
+
+def _block_meta_comment(block: dict, *, include_reason: bool = False) -> str:
+    """Render compact trace metadata without changing the recovered source text."""
+    pieces = [
+        f"[{_comment_safe(str(block.get('block_id') or '?'))}]",
+        f"type={_comment_safe(str(block.get('type') or 'unknown'))}",
+    ]
+
+    page_start = block.get("page_start")
+    page_end = block.get("page_end")
+    if page_start is not None or page_end is not None:
+        if page_start == page_end:
+            pieces.append(f"page={page_start}")
+        else:
+            pieces.append(f"page={page_start}-{page_end}")
+
+    heading_path = block.get("heading_path")
+    if heading_path:
+        pieces.append(f"heading={_comment_safe(json.dumps(heading_path, ensure_ascii=False))}")
+
+    risk_tags = block.get("risk_tags")
+    if risk_tags:
+        pieces.append(f"risk_tags={_comment_safe(json.dumps(risk_tags, ensure_ascii=False))}")
+
+    confidence = block.get("confidence")
+    if confidence is not None:
+        try:
+            pieces.append(f"confidence={float(confidence):.2f}")
+        except (TypeError, ValueError):
+            pieces.append(f"confidence={_comment_safe(str(confidence))}")
+
+    if include_reason and block.get("reason"):
+        pieces.append(f"reason={_comment_safe(str(block.get('reason')))}")
+
+    return f"<!-- {' '.join(pieces)} -->"
+
+
+def _comment_safe(value: str) -> str:
+    return value.replace("--", "- -").replace("\r", " ").replace("\n", " ").strip()
 
 
 def _is_internal_page_marker(text: str) -> bool:
