@@ -1933,6 +1933,7 @@ describe("kbprep worker pipeline", () => {
           { op: "replace", path: `/blocks/${stepBlock.block_id}/text`, value: "总结成一句话" },
           { op: "replace", path: `/blocks/${stepBlock.block_id}/status`, value: "discard" },
           { op: "replace", path: `/blocks/${ctaBlock.block_id}/status`, value: "gone" },
+          { op: "replace", path: `/blocks/${ctaBlock.block_id}/status/extra`, value: "evidence" },
           { op: "replace", path: `/blocks/${ctaBlock.block_id}/risk_tags`, value: "not-array" },
           { op: "replace", path: `/blocks/${ctaBlock.block_id}/confidence`, value: "high" },
           { op: "replace", path: `/blocks/${ctaBlock.block_id}/status`, value: "review" },
@@ -1953,7 +1954,7 @@ describe("kbprep worker pipeline", () => {
       const updatedCta = updatedBlocks.find((block) => block.block_id === ctaBlock.block_id);
 
       expect(patched.data.applied).toBe(2);
-      expect(patched.data.rejected).toBe(5);
+      expect(patched.data.rejected).toBe(6);
       expect(patched.data.published).toBe(true);
       expect(updatedStep.text).toContain("REVIEW_STEP_MARKER");
       expect(updatedStep.status).toBe("keep");

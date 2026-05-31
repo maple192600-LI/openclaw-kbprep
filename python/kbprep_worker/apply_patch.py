@@ -54,7 +54,7 @@ def run(data: dict) -> None:
 
         # Parse path: /blocks/b_000123/status
         parts = path.strip("/").split("/")
-        if len(parts) < 3 or parts[0] != "blocks":
+        if len(parts) != 3 or parts[0] != "blocks":
             rejected.append({"op": json.dumps(op), "reason": "invalid path format"})
             continue
 
