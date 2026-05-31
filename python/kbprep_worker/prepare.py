@@ -433,26 +433,42 @@ def run(data: dict) -> None:
     # Final output
     chunks_dir = run_dir / "chunks"
     chunk_count = len(list(chunks_dir.glob("*.md"))) if chunks_dir.exists() else 0
-
+    run_outputs = {
+        "converted_md": str(run_dir / "converted.md"),
+        "normalized_md": str(run_dir / "normalized.md"),
+        "diagnosis_report": str(run_dir / "diagnosis_report.json"),
+        "blocks_jsonl": str(run_dir / "blocks.jsonl"),
+        "cleaned_md": str(run_dir / "cleaned.md"),
+        "discarded_md": str(run_dir / "discarded.md"),
+        "review_needed_md": str(run_dir / "review_needed.md"),
+        "audit_md": str(run_dir / "audit.md"),
+        "quality_report": str(run_dir / "quality_report.json"),
+        "chunks_dir": str(chunks_dir),
+        "parts_dir": str(run_dir / "parts"),
+        "review_pack": str(run_dir / "review_pack.json") if (run_dir / "review_pack.json").exists() else None,
+    }
+    if strict_errors:
+        fail(
+            "E_QA_FAILED",
+            "Quality gate failed; latest outputs were not published.",
+            details={
+                "run_id": run_id,
+                "run_dir": str(run_dir),
+                "outputs": run_outputs,
+                "strict_errors": strict_errors,
+                "latest_outputs": latest_outputs,
+            },
+            warnings=warnings,
+            recoverable=True,
+            suggested_action="Inspect quality_report.json, discarded.md, and review_needed.md in run_dir, then adjust the input or rules and rerun.",
+        )
+        return
     ok(data={
         "ok": True,
         "run_id": run_id,
         "run_dir": str(run_dir),
         "latest_outputs": latest_outputs,
-        "outputs": {
-            "converted_md": str(run_dir / "converted.md"),
-            "normalized_md": str(run_dir / "normalized.md"),
-            "diagnosis_report": str(run_dir / "diagnosis_report.json"),
-            "blocks_jsonl": str(run_dir / "blocks.jsonl"),
-            "cleaned_md": str(run_dir / "cleaned.md"),
-            "discarded_md": str(run_dir / "discarded.md"),
-            "review_needed_md": str(run_dir / "review_needed.md"),
-            "audit_md": str(run_dir / "audit.md"),
-            "quality_report": str(run_dir / "quality_report.json"),
-            "chunks_dir": str(chunks_dir),
-            "parts_dir": str(run_dir / "parts"),
-            "review_pack": str(run_dir / "review_pack.json") if (run_dir / "review_pack.json").exists() else None,
-        },
+        "outputs": run_outputs,
         "chunk_count": chunk_count,
         "warnings": warnings,
         "strict_errors": strict_errors,
@@ -733,8 +749,37 @@ def _run_mineru_conversion(
             f"MinerU did not produce source Markdown: {source_md}",
             {"source_md_path": str(source_md)},
         )
+    _copy_mineru_image_assets(source_md, run_dir, result)
     shutil.copy2(str(source_md), str(converted_path))
     return result
+
+
+def _copy_mineru_image_assets(source_md: Path, run_dir: Path, mineru_result: dict) -> None:
+    image_dirs: list[Path] = []
+    direct_images = source_md.parent / "images"
+    if direct_images.exists():
+        image_dirs.append(direct_images)
+    assets_dir = mineru_result.get("assets_dir")
+    if assets_dir:
+        assets_path = Path(str(assets_dir))
+        if assets_path.exists():
+            image_dirs.extend(path for path in assets_path.rglob("images") if path.is_dir())
+
+    if not image_dirs:
+        return
+    target_images = run_dir / "images"
+    copied: set[Path] = set()
+    for source_images in image_dirs:
+        for src in source_images.rglob("*"):
+            if not src.is_file():
+                continue
+            rel = src.relative_to(source_images)
+            dst = target_images / rel
+            if dst in copied:
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(src), str(dst))
+            copied.add(dst)
 
 
 def _maybe_fallback_pdf_text_layer_to_mineru(

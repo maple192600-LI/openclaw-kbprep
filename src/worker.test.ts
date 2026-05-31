@@ -1626,6 +1626,74 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("copies MinerU image assets next to converted Markdown", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-mineru-assets-"));
+    try {
+      runPython(
+        [
+          "from pathlib import Path",
+          "from kbprep_worker import mineru_adapter, prepare",
+          "run_dir = Path(__import__('sys').argv[1])",
+          "input_path = run_dir / 'sample.pdf'",
+          "input_path.write_bytes(b'%PDF-1.4\\n')",
+          "def fake_mineru(**kwargs):",
+          "    raw = Path(kwargs['output_dir']) / 'mineru_raw' / 'sample' / 'auto'",
+          "    images = raw / 'images'",
+          "    images.mkdir(parents=True)",
+          "    (images / 'kept.jpg').write_bytes(b'jpg')",
+          "    source = raw / 'source.md'",
+          "    source.write_text('![](images/kept.jpg)\\n', encoding='utf-8')",
+          "    return {'source_md_path': str(source), 'converter': 'mineru', 'warnings': []}",
+          "mineru_adapter.run_mineru = fake_mineru",
+          "converted = run_dir / 'converted.md'",
+          "prepare._run_mineru_conversion(input_path, converted, run_dir, 'zh', 'auto')",
+          "assert converted.read_text(encoding='utf-8') == '![](images/kept.jpg)\\n'",
+          "assert (run_dir / 'images' / 'kept.jpg').read_bytes() == b'jpg'",
+        ].join("\n"),
+        [root],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails prepare when strict quality gates fail instead of publishing latest outputs", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-strict-gate-"));
+    try {
+      runPython(
+        [
+          "import io, json, sys",
+          "from pathlib import Path",
+          "from kbprep_worker import prepare, quality",
+          "input_path = Path(sys.argv[1])",
+          "output_root = Path(sys.argv[2])",
+          "input_path.write_text('# Clean text\\n\\nStep 1: keep threshold=0.8.\\n', encoding='utf-8')",
+          "def fake_quality(**kwargs):",
+          "    return {'strict_errors': ['E_QA_FAILED: forced strict error'], 'warnings': []}",
+          "quality.run_quality_check = fake_quality",
+          "stdout = io.StringIO()",
+          "old_stdout = sys.stdout",
+          "try:",
+          "    sys.stdout = stdout",
+          "    try:",
+          "        prepare.run({'input_path': str(input_path), 'output_root': str(output_root), 'profile': 'lite', 'mode': 'rules_only', 'language': 'zh', 'source_type': 'auto', 'splitter': 'auto', 'force': True})",
+          "    except SystemExit:",
+          "        pass",
+          "finally:",
+          "    sys.stdout = old_stdout",
+          "payload = json.loads(stdout.getvalue())",
+          "assert payload['ok'] is False, payload",
+          "assert payload['error']['code'] == 'E_QA_FAILED', payload",
+          "assert 'run_dir' in payload['error']['details'], payload",
+          "assert not (output_root / 'latest.json').exists(), list(output_root.iterdir())",
+        ].join("\n"),
+        [path.join(root, "input.md"), path.join(root, "output")],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("unwraps trusted PDF text-layer hard line breaks without merging structural lines", () => {
     runPython(
       [
