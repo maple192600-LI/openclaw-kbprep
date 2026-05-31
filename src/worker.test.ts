@@ -1941,6 +1941,56 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("classifies Chinese QR images, proof screenshots, and tutorial screenshots", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-image-classify-"));
+    try {
+      runPython(
+        [
+          "from pathlib import Path",
+          "from kbprep_worker import images",
+          "run_dir = Path(__import__('sys').argv[1])",
+          "(run_dir / 'converted.md').write_text('placeholder', encoding='utf-8')",
+          "blocks = [",
+          "    {",
+          "        'block_id': 'qr',",
+          "        'type': 'unknown_review',",
+          "        'text': '扫码加入社群，免费领取体验卡。\\n![](images/qr.png)',",
+          "        'images': [{'src': 'images/qr.png'}],",
+          "        'heading_path': [],",
+          "        'status': 'unclassified',",
+          "    },",
+          "    {",
+          "        'block_id': 'proof',",
+          "        'type': 'unknown_review',",
+          "        'text': '这是案例收入数据截图，用来说明变现结果。\\n![](images/proof.png)',",
+          "        'images': [{'src': 'images/proof.png'}],",
+          "        'heading_path': [],",
+          "        'status': 'unclassified',",
+          "    },",
+          "    {",
+          "        'block_id': 'step',",
+          "        'type': 'unknown_review',",
+          "        'text': '步骤 1：打开后台设置页面，点击保存。\\n![](images/step.png)',",
+          "        'images': [{'src': 'images/step.png'}],",
+          "        'heading_path': ['实操教程'],",
+          "        'status': 'unclassified',",
+          "    },",
+          "]",
+          "classified = {block['block_id']: block for block in images.classify_images(blocks, str(run_dir))}",
+          "assert classified['qr']['image_type'] == 'qr_image', classified",
+          "assert classified['qr']['status'] == 'discard', classified",
+          "assert classified['proof']['image_type'] == 'proof_screenshot', classified",
+          "assert classified['proof']['status'] == 'evidence', classified",
+          "assert classified['step']['image_type'] == 'operation_screenshot', classified",
+          "assert classified['step']['status'] == 'keep', classified",
+        ].join("\n"),
+        [root],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("copies local Markdown image assets into run and latest outputs", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-md-assets-"));
     try {
