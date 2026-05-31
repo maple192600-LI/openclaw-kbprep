@@ -38,6 +38,7 @@ Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when yo
 
 For audio/video, v1 handles local subtitle, transcript, or ASR text files. It does not automatically download or transcribe binary media.
 Batch runs write `batch_inventory.json`, so unsupported or skipped local files are visible instead of silently ignored. Audio/video binaries are marked as `media_binary_not_transcribed_in_v1`; unknown extensions are marked as unsupported.
+Batch mode is conservative with heavy conversion files: PDF, image, MOBI, and legacy Office files are processed one at a time even when `convert_jobs` is greater than 1. Lightweight text/code/subtitle/modern Office XML files may use `convert_jobs`.
 
 `quality_report.json` includes `detail_retention`, a block-level retention inventory for operation steps, tools/platforms, parameters, links, prompts, code, tables, and numeric details. Discarding blocks that contain these concrete knowledge signals is treated as a strict QA failure unless they are known pollution with no detail signal.
 It also includes `output_retention`, which checks that links, parameter assignments, code blocks, and table blocks from kept/review/evidence blocks appear in their rendered destination: `cleaned.md`, `review_needed.md`, or `evidence/marketing_pages.md`. Missing rendered detail signals are strict QA failures.

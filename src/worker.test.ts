@@ -1872,6 +1872,66 @@ describe("kbprep worker pipeline", () => {
     }
   }, 15_000);
 
+  it("runs heavy batch conversion files serially even when convert_jobs is greater than one", () => {
+    runPython(
+      [
+        "import io, json, sys, tempfile, threading, time",
+        "from pathlib import Path",
+        "from kbprep_worker import prepare_batch",
+        "root = Path(tempfile.mkdtemp(prefix='kbprep-heavy-batch-'))",
+        "input_dir = root / 'input'",
+        "output_root = root / 'output'",
+        "input_dir.mkdir()",
+        "output_root.mkdir()",
+        "(input_dir / '00-sample.md').write_text('# Sample\\n\\n步骤1：保留样本。', encoding='utf-8')",
+        "(input_dir / '01-heavy.pdf').write_bytes(b'%PDF-1.4 heavy one')",
+        "(input_dir / '02-heavy.pdf').write_bytes(b'%PDF-1.4 heavy two')",
+        "(input_dir / '03-note.md').write_text('# Note\\n\\n步骤1：轻文本。', encoding='utf-8')",
+        "lock = threading.Lock()",
+        "active_pdf = 0",
+        "max_active_pdf = 0",
+        "calls = []",
+        "def fake_process_one_file(file_path, output_root, profile, language, mode, force):",
+        "    global active_pdf, max_active_pdf",
+        "    suffix = Path(file_path).suffix.lower()",
+        "    calls.append(Path(file_path).name)",
+        "    if suffix == '.pdf':",
+        "        with lock:",
+        "            active_pdf += 1",
+        "            max_active_pdf = max(max_active_pdf, active_pdf)",
+        "        time.sleep(0.08)",
+        "        with lock:",
+        "            active_pdf -= 1",
+        "    return {'ok': True, 'data': {'run_id': Path(file_path).stem, 'strict_errors': [], 'latest_outputs': {'cleaned_md': str(Path(output_root) / 'cleaned.md')}}}",
+        "prepare_batch._process_one_file = fake_process_one_file",
+        "stdout = io.StringIO()",
+        "old_stdout = sys.stdout",
+        "try:",
+        "    sys.stdout = stdout",
+        "    try:",
+        "        prepare_batch.run({",
+        "            'input_dir': str(input_dir),",
+        "            'output_root': str(output_root),",
+        "            'profile': 'standard',",
+        "            'mode': 'rules_only',",
+        "            'language': 'zh',",
+        "            'force': True,",
+        "            'convert_jobs': 3,",
+        "        })",
+        "    except SystemExit:",
+        "        pass",
+        "finally:",
+        "    sys.stdout = old_stdout",
+        "payload = json.loads(stdout.getvalue())",
+        "assert payload['ok'] is True, payload",
+        "assert max_active_pdf == 1, {'max_active_pdf': max_active_pdf, 'calls': calls}",
+        "assert payload['data']['heavy_conversion_files'] == 2, payload",
+        "assert payload['data']['heavy_conversion_concurrency'] == 1, payload",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("renders long documents into ordered parts that reconstruct cleaned markdown", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-worker-"));
     try {

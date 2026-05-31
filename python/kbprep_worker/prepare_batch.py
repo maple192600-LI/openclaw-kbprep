@@ -11,11 +11,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from .envelope import ok, fail
-from .supported_formats import BATCH_SUPPORTED_EXTENSIONS, FORMAT_BY_EXTENSION, MEDIA_EXTENSIONS
+from .supported_formats import BATCH_SUPPORTED_EXTENSIONS, FORMAT_BY_EXTENSION, MEDIA_EXTENSIONS, MINERU_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS = BATCH_SUPPORTED_EXTENSIONS
+HEAVY_CONVERSION_EXTENSIONS = MINERU_EXTENSIONS
 
 DEFAULT_MIN_FREE_GB = 4.0
 
@@ -135,6 +136,7 @@ def _scan_input_files(input_p: Path) -> tuple[list[Path], dict]:
             "extension": ext,
             "detected_format": detected_format,
             "size_bytes": file_path.stat().st_size,
+            "conversion_weight": "heavy" if _is_heavy_conversion_file(file_path) else "light",
         }
         if ext in SUPPORTED_EXTENSIONS:
             entry["action"] = "process"
@@ -175,6 +177,10 @@ def _write_batch_inventory(output_root: Path, inventory: dict) -> Path:
     path = output_root / "batch_inventory.json"
     path.write_text(json.dumps(inventory, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
+
+
+def _is_heavy_conversion_file(file_path: Path) -> bool:
+    return file_path.suffix.lower() in HEAVY_CONVERSION_EXTENSIONS
 
 
 def run(data: dict) -> None:
@@ -265,66 +271,93 @@ def run(data: dict) -> None:
     succeeded = 1
     skipped = 1 if sample_result.get("data", {}).get("skipped") else 0
     failed = 0
+    heavy_files = [file_path for file_path in files if _is_heavy_conversion_file(file_path)]
+    heavy_remaining = [file_path for file_path in remaining if _is_heavy_conversion_file(file_path)]
+    light_remaining = [file_path for file_path in remaining if not _is_heavy_conversion_file(file_path)]
 
-    max_workers = max(1, min(convert_jobs, len(remaining) or 1))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_file = {
-            executor.submit(
-                _process_one_file,
+    def record_result(f: Path, out: dict) -> None:
+        nonlocal succeeded, skipped, failed
+
+        if out.get("ok") and not out.get("data", {}).get("strict_errors"):
+            succeeded += 1
+            if out.get("data", {}).get("skipped"):
+                skipped += 1
+            file_output_root = _output_root_for_file(output_p, f)
+            results.append({
+                "file": f.name,
+                "relative_path": relative_paths[f],
+                "output_root": str(file_output_root),
+                **out.get("data", {}),
+                "ok": True,
+            })
+        else:
+            failed += 1
+            file_output_root = _output_root_for_file(output_p, f)
+            failure = {
+                "file": f.name,
+                "relative_path": relative_paths[f],
+                "output_root": str(file_output_root),
+                "error": out.get("error", {}),
+                "data": out.get("data", {}),
+            }
+            failures.append(failure)
+            results.append({"file": f.name, "ok": False, **failure})
+
+        _write_progress(output_p, {
+            "stage": "batch",
+            "total": len(files),
+            "discovered_total": inventory["discovered_total"],
+            "skipped_unsupported": inventory["skipped_unsupported"],
+            "processed": len(results),
+            "succeeded": succeeded,
+            "skipped": skipped,
+            "failed": failed,
+            "heavy_conversion_files": len(heavy_files),
+            "heavy_conversion_concurrency": 1,
+            "light_conversion_concurrency": max(1, min(convert_jobs, len(light_remaining) or 1)),
+            "started_at": started_at,
+            "updated_at": time.time(),
+        })
+        _write_failures(output_p, failures)
+
+    # MinerU/OCR-style conversions are intentionally serialized to avoid GPU/CPU
+    # memory spikes. Lightweight text/code/XML conversions may use convert_jobs.
+    for f in heavy_remaining:
+        try:
+            out = _process_one_file(
                 f,
                 str(_output_root_for_file(output_p, f)),
                 profile,
                 language,
                 mode,
                 force,
-            ): f
-            for f in remaining
-        }
-        for future in as_completed(future_to_file):
-            f = future_to_file[future]
-            try:
-                out = future.result()
-            except Exception as exc:
-                out = {"ok": False, "error": {"message": str(exc)}}
+            )
+        except Exception as exc:
+            out = {"ok": False, "error": {"message": str(exc)}}
+        record_result(f, out)
 
-            if out.get("ok") and not out.get("data", {}).get("strict_errors"):
-                succeeded += 1
-                if out.get("data", {}).get("skipped"):
-                    skipped += 1
-                file_output_root = _output_root_for_file(output_p, f)
-                results.append({
-                    "file": f.name,
-                    "relative_path": relative_paths[f],
-                    "output_root": str(file_output_root),
-                    **out.get("data", {}),
-                    "ok": True,
-                })
-            else:
-                failed += 1
-                file_output_root = _output_root_for_file(output_p, f)
-                failure = {
-                    "file": f.name,
-                    "relative_path": relative_paths[f],
-                    "output_root": str(file_output_root),
-                    "error": out.get("error", {}),
-                    "data": out.get("data", {}),
-                }
-                failures.append(failure)
-                results.append({"file": f.name, "ok": False, **failure})
-
-            _write_progress(output_p, {
-                "stage": "batch",
-                "total": len(files),
-                "discovered_total": inventory["discovered_total"],
-                "skipped_unsupported": inventory["skipped_unsupported"],
-                "processed": len(results),
-                "succeeded": succeeded,
-                "skipped": skipped,
-                "failed": failed,
-                "started_at": started_at,
-                "updated_at": time.time(),
-            })
-            _write_failures(output_p, failures)
+    max_workers = max(1, min(convert_jobs, len(light_remaining) or 1))
+    if light_remaining:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_file = {
+                executor.submit(
+                    _process_one_file,
+                    f,
+                    str(_output_root_for_file(output_p, f)),
+                    profile,
+                    language,
+                    mode,
+                    force,
+                ): f
+                for f in light_remaining
+            }
+            for future in as_completed(future_to_file):
+                f = future_to_file[future]
+                try:
+                    out = future.result()
+                except Exception as exc:
+                    out = {"ok": False, "error": {"message": str(exc)}}
+                record_result(f, out)
 
     _write_progress(output_p, {
         "stage": "complete",
@@ -352,6 +385,9 @@ def run(data: dict) -> None:
         "skipped": skipped,
         "skipped_unsupported": inventory["skipped_unsupported"],
         "failed": failed,
+        "heavy_conversion_files": len(heavy_files),
+        "heavy_conversion_concurrency": 1,
+        "light_conversion_concurrency": max_workers,
         "results": results,
         "batch_inventory_json": str(inventory_path),
         "failures_json": str(output_p / "failures.json"),
