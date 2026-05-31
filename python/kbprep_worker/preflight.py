@@ -1,13 +1,14 @@
 """
-preflight — check Python, uv, MinerU availability, GPU/CUDA, workspace write permissions.
+preflight - check plugin-local Python, MinerU availability, GPU/CUDA, and workspace permissions.
 """
+
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-from .envelope import ok, fail
+from .envelope import fail, ok
 from .mineru_adapter import find_mineru
 from .setup_env import detect_device
 
@@ -20,13 +21,13 @@ def run(data: dict) -> None:
     errors: list[str] = []
     versions: dict[str, Any] = {}
 
-    # Python version
     versions["python"] = sys.version.split()[0]
     versions["python_executable"] = sys.executable
 
     # PyMuPDF powers the lightweight trusted text-layer PDF route.
     try:
         import fitz  # PyMuPDF
+
         versions["pymupdf"] = getattr(fitz, "__version__", "unknown")
         versions["pdf_text_layer_available"] = True
     except ImportError:
@@ -39,7 +40,6 @@ def run(data: dict) -> None:
 
     versions["runtime_isolated"] = True
 
-    # MinerU CLI
     try:
         mineru_path = find_mineru()
         versions["mineru_path"] = mineru_path
@@ -55,9 +55,9 @@ def run(data: dict) -> None:
             "or reinstall the plugin if the environment is incomplete."
         )
 
-    # torch + GPU detection
     try:
         import torch
+
         torch_version = f"{torch.__version__}"
         versions["torch_cuda_available"] = bool(torch.cuda.is_available())
         versions["torch_cuda_version"] = torch.version.cuda or "none"
@@ -75,7 +75,6 @@ def run(data: dict) -> None:
                 warnings.append("torch has CUDA support but no GPU is available.")
         else:
             versions["torch"] = f"{torch_version}+cpu"
-            # Check if nvidia driver exists
             nvidia_smi = shutil.which("nvidia-smi")
             if nvidia_smi:
                 versions["nvidia_smi_path"] = nvidia_smi
@@ -89,18 +88,16 @@ def run(data: dict) -> None:
         versions["torch_cuda_version"] = "not installed"
         versions["torch_device_count"] = 0
 
-    # MinerU device mode
     device = detect_device()
     versions["mineru_device"] = device
     if device == "cpu":
         warnings.append("MinerU will run in CPU mode. GPU acceleration recommended for faster processing.")
 
-    # MinerU model cache check
     try:
         from pathlib import Path as P
         import os
+
         hf_cache = P(os.path.expanduser("~")) / ".cache" / "huggingface" / "hub"
-        # Check for the main model pack that MinerU 3.x uses
         main_model = hf_cache / "models--opendatalab--PDF-Extract-Kit-1.0"
         has_main = main_model.exists() and (main_model / "blobs").exists() and any((main_model / "blobs").iterdir())
         if has_main:
@@ -116,9 +113,9 @@ def run(data: dict) -> None:
     except Exception:
         warnings.append("Could not check MinerU model cache.")
 
-    # Available memory
     try:
         import psutil
+
         mem = psutil.virtual_memory()
         versions["memory_total_gb"] = f"{mem.total / 1024**3:.1f}"
         versions["memory_available_gb"] = f"{mem.available / 1024**3:.1f}"
@@ -129,7 +126,6 @@ def run(data: dict) -> None:
         except Exception:
             pass
 
-    # Workspace write check
     ws = Path(workspace_path)
     try:
         ws.mkdir(parents=True, exist_ok=True)
@@ -139,7 +135,6 @@ def run(data: dict) -> None:
     except Exception as e:
         errors.append(f"Workspace not writable: {e}")
 
-    # Disk space
     try:
         usage = shutil.disk_usage(str(ws))
         free_gb = usage.free / (1024**3)

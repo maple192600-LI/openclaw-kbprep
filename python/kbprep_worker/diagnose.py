@@ -46,6 +46,21 @@ QR_TEXT_RE = re.compile(r'(?:扫码|二维码|扫一扫|QR\s*code|qrcode)', re.I
 CTA_TEXT_RE = re.compile(r'(?:扫码(?:加入|入群)|添加.*服务官|免费领取.*体验卡|限时优惠|立即购买|点击链接)', re.IGNORECASE)
 
 
+MOJIBAKE_TOKEN_RE = re.compile(
+    "|".join(
+        re.escape(token)
+        for token in [
+            "姗欑毊", "鍏ラ棬", "绮鹃€", "娑电洊", "鏋舵瀯", "鍘熺悊", "閮ㄧ讲",
+            "鏂规", "妗堛€", "娓犻亾", "鎺ュ叆", "绯荤粺", "妯″瀷", "閰嶇疆",
+            "瀹夊叏", "鎴愭湰", "鍙傝€", "鎵嬪唽", "淇℃伅", "鏉ユ簮", "瀹樻柟",
+            "鏂囨。", "浠撳簱", "绀惧尯", "璋冪爺", "鐗堟湰", "閫傜敤", "鍙戝竷",
+            "鏃堕棿", "鐢熸€", "鍏ㄦ櫙", "鍏紬", "鐭ヨ瘑", "缂栫▼", "杈呭姪",
+            "鍑嗙‘", "娆㈣繋", "鍏虫敞", "鍙嶉", "棣堜氦", "閰嶅", "瑙嗛",
+        ]
+    )
+)
+
+
 def analyze_text_quality(text: str) -> dict:
     """Analyze text quality metrics."""
     if not text:
@@ -81,7 +96,8 @@ def analyze_text_quality(text: str) -> dict:
     mojibake_matches = MOJIBAKE_RE.findall(text)
     mojibake_sequence_chars = sum(len(m) for m in mojibake_matches)
     mojibake_char_count = len(MOJIBAKE_CHAR_RE.findall(text))
-    mojibake_chars = max(mojibake_sequence_chars, mojibake_char_count)
+    mojibake_token_chars = sum(len(m.group(0)) for m in MOJIBAKE_TOKEN_RE.finditer(text))
+    mojibake_chars = max(mojibake_sequence_chars, mojibake_char_count, mojibake_token_chars)
     non_common_unicode_ratio = non_common_unicode_chars / total if total > 0 else 0.0
     replacement_char_ratio = replacement_chars / total if total > 0 else 0.0
     mojibake_ratio = mojibake_chars / total if total > 0 else 0.0
@@ -244,6 +260,13 @@ def analyze_pdf(input_path: str) -> dict:
                 "W_PDF_TEXT_LAYER_UNTRUSTED: "
                 f"unreadable text ratio {quality.get('unreadable_text_ratio', 0):.2%}"
             )
+        elif quality.get("mojibake_ratio", 0) > 0.08:
+            result["text_layer_health"] = "bad"
+            result["pdf_subtype"] = "garbled_text_layer"
+            result["is_garbled"] = True
+            result["needs_ocr"] = True
+            result["recommended_pipeline"] = "mineru_pipeline_ocr"
+            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: mojibake ratio {quality['mojibake_ratio']:.2%}")
         elif quality["garbled_ratio"] > 0.08:
             result["text_layer_health"] = "bad"
             result["pdf_subtype"] = "garbled_text_layer"
@@ -251,6 +274,12 @@ def analyze_pdf(input_path: str) -> dict:
             result["needs_ocr"] = True
             result["recommended_pipeline"] = "mineru_pipeline_ocr"
             warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: garbled ratio {quality['garbled_ratio']:.2%}")
+        elif quality.get("mojibake_ratio", 0) > 0.03:
+            result["text_layer_health"] = "degraded"
+            result["pdf_subtype"] = "garbled_text_layer"
+            result["needs_ocr"] = True
+            result["recommended_pipeline"] = "mineru_pipeline_ocr"
+            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: mojibake ratio {quality['mojibake_ratio']:.2%}")
         elif quality["garbled_ratio"] > 0.03:
             result["text_layer_health"] = "degraded"
             result["pdf_subtype"] = "garbled_text_layer"

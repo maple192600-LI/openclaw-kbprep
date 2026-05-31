@@ -623,9 +623,6 @@ def _check_env(profile: str) -> list[str]:
     warnings = []
     if sys.version_info < (3, 10):
         warnings.append("Python < 3.10 detected. Some features may not work.")
-    import shutil as sh
-    if not sh.which("uv"):
-        warnings.append("uv not found. Venv management will fail.")
     return warnings
 
 

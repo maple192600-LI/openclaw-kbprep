@@ -2,7 +2,7 @@
 CLI entry point for kbprep_worker.
 
 Usage:
-    uv run python -m kbprep_worker.cli <command> --json-stdin
+    python -m kbprep_worker.cli <command> --json-stdin
 
 Commands: setup-env, preflight, diagnose, prepare, apply-review
 """

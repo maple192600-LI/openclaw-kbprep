@@ -244,6 +244,21 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("detects common UTF-8-as-GBK PDF text-layer mojibake", () => {
+    runPython(
+      [
+        "from kbprep_worker.diagnose import analyze_text_quality",
+        "broken_pdf_text = 'OpenClaw姗欑毊涔︿粠鍏ラ棬鍒扮簿閫氾紝娑电洊鏋舵瀯鍘熺悊銆侀儴缃叉柟妗堛€佹笭閬撴帴鍏ャ€丼kills绯荤粺'",
+        "quality = analyze_text_quality(broken_pdf_text * 10)",
+        "normal = analyze_text_quality('今天讲一个教程步骤、参数和失败经验。OpenClaw 可以接入多种渠道。' * 20)",
+        "assert normal['mojibake_ratio'] == 0.0, normal",
+        "assert quality['mojibake_ratio'] > 0.08, quality",
+        "assert quality['unreadable_text_ratio'] > 0.08, quality",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("installs pinned CUDA torch into the selected plugin Python and re-probes in a fresh process", () => {
     runPython(
       [
