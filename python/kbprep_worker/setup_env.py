@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 CUDA_TORCH_INDEX_URL = "https://download.pytorch.org/whl/cu126"
 CUDA_TORCH_PACKAGES = ["torch==2.8.0", "torchvision==0.23.0"]
+CUDA_TORCH_INSTALL_TIMEOUT_SECONDS = int(os.environ.get("KBPREP_CUDA_TORCH_INSTALL_TIMEOUT_SECONDS", "1500"))
 
 
 def check_nvidia_driver() -> bool:
@@ -108,9 +110,16 @@ def setup_gpu(venv_python: str | None = None, device_override: str | None = None
         logger.info("NVIDIA GPU detected but torch lacks CUDA support. Installing CUDA torch...")
         try:
             subprocess.run(
-                [python, "-m", "pip", "install", *CUDA_TORCH_PACKAGES, "--index-url", CUDA_TORCH_INDEX_URL],
+                [
+                    python, "-m", "pip", "install",
+                    "--upgrade", "--force-reinstall",
+                    *CUDA_TORCH_PACKAGES,
+                    "--index-url", CUDA_TORCH_INDEX_URL,
+                ],
                 check=True,
-                timeout=600,
+                timeout=CUDA_TORCH_INSTALL_TIMEOUT_SECONDS,
+                capture_output=True,
+                text=True,
             )
             torch_probe = probe_torch(python)
             result["torch"] = torch_probe

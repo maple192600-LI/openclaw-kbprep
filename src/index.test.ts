@@ -55,7 +55,7 @@ describe("openclaw-kbprep", () => {
       python_executable: pluginVenvPythonPath(),
       device_override: "auto",
       python_project: {
-        dependency_spec: "mineru[all]==3.2.1",
+        dependency_spec: "mineru[all]==3.2.1;PyMuPDF==1.27.2.3",
       },
       setup_env: { ok: true, data: { device: "cpu" } },
     };
@@ -64,6 +64,10 @@ describe("openclaw-kbprep", () => {
     expect(isRuntimeMarkerCurrent({ ...validMarker, schema: "kbprep.plugin_venv.v1" })).toBe(false);
     expect(isRuntimeMarkerCurrent({ ...validMarker, plugin_version: "0.4.0" })).toBe(false);
     expect(isRuntimeMarkerCurrent({ ...validMarker, setup_env: { ok: false } })).toBe(false);
+    expect(isRuntimeMarkerCurrent({
+      ...validMarker,
+      setup_env: { ok: true, data: { actions_taken: ["cuda_install_failed: timed out"] } },
+    })).toBe(false);
     expect(isRuntimeMarkerCurrent(validMarker, { device_override: "cpu" })).toBe(false);
   });
 

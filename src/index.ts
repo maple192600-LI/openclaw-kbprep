@@ -8,7 +8,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RUNTIME_MARKER_SCHEMA = "kbprep.plugin_venv.v2";
-const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]==3.2.1";
+const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]==3.2.1;PyMuPDF==1.27.2.3";
 
 export function resolvePythonPath(startPath: string, config?: PluginConfig): string {
   const pluginPython = pluginVenvPythonPath();
@@ -133,6 +133,7 @@ export function isRuntimeMarkerCurrent(marker: unknown, config?: PluginConfig): 
   const data = marker as Record<string, unknown>;
   const pythonProject = data.python_project as Record<string, unknown> | undefined;
   const setupEnv = data.setup_env as Record<string, unknown> | undefined;
+  const setupData = setupEnv?.data as Record<string, unknown> | undefined;
 
   return (
     data.schema === RUNTIME_MARKER_SCHEMA
@@ -141,7 +142,14 @@ export function isRuntimeMarkerCurrent(marker: unknown, config?: PluginConfig): 
     && data.device_override === effectiveDeviceOverride(config)
     && pythonProject?.dependency_spec === PYTHON_WORKER_DEPENDENCY_SPEC
     && setupEnv?.ok === true
+    && !hasCudaSetupFailure(setupData)
   );
+}
+
+function hasCudaSetupFailure(setupData?: Record<string, unknown>): boolean {
+  const actions = setupData?.actions_taken;
+  if (!Array.isArray(actions)) return false;
+  return actions.some((action) => typeof action === "string" && action.startsWith("cuda_install_failed"));
 }
 
 function effectiveDeviceOverride(config?: PluginConfig): "auto" | "cuda" | "cpu" {

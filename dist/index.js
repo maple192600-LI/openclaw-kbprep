@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const RUNTIME_MARKER_SCHEMA = "kbprep.plugin_venv.v2";
-const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]==3.2.1";
+const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]==3.2.1;PyMuPDF==1.27.2.3";
 export function resolvePythonPath(startPath, config) {
     const pluginPython = pluginVenvPythonPath();
     if (isPluginVenvReady(config))
@@ -102,12 +102,20 @@ export function isRuntimeMarkerCurrent(marker, config) {
     const data = marker;
     const pythonProject = data.python_project;
     const setupEnv = data.setup_env;
+    const setupData = setupEnv?.data;
     return (data.schema === RUNTIME_MARKER_SCHEMA
         && data.plugin_version === pluginPackageVersion()
         && data.python_executable === pluginVenvPythonPath()
         && data.device_override === effectiveDeviceOverride(config)
         && pythonProject?.dependency_spec === PYTHON_WORKER_DEPENDENCY_SPEC
-        && setupEnv?.ok === true);
+        && setupEnv?.ok === true
+        && !hasCudaSetupFailure(setupData));
+}
+function hasCudaSetupFailure(setupData) {
+    const actions = setupData?.actions_taken;
+    if (!Array.isArray(actions))
+        return false;
+    return actions.some((action) => typeof action === "string" && action.startsWith("cuda_install_failed"));
 }
 function effectiveDeviceOverride(config) {
     return config?.device_override ?? "auto";
