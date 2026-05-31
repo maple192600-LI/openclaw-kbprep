@@ -13,6 +13,7 @@ import io
 import json
 import logging
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -189,10 +190,11 @@ def run(data: dict) -> None:
             _stderr_log("info", "convert", "Text-like file normalized directly")
         elif ext in office_xml_exts:
             _validate_convertible_container(input_p)
-            text, office_warnings = _office_xml_to_markdown(input_p)
+            text, office_warnings, office_artifacts = _office_xml_to_markdown(input_p, run_dir)
             converted_path.write_text(text, encoding="utf-8")
+            mineru_artifacts.update(office_artifacts)
             if ext == ".pptx":
-                mineru_artifacts = _write_pptx_content_list(text, run_dir)
+                mineru_artifacts.update(_write_pptx_content_list(text, run_dir))
                 diagnosis["split_strategy"] = "preserve_slide_or_page_order"
             warnings.extend(office_warnings)
             _stderr_log("info", "convert", "Office XML converted directly")
@@ -987,20 +989,26 @@ def _pdf_text_layer_output_needs_ocr(quality: dict) -> bool:
     )
 
 
-def _office_xml_to_markdown(input_p: Path) -> tuple[str, list[str]]:
+def _office_xml_to_markdown(input_p: Path, run_dir: Path) -> tuple[str, list[str], dict]:
     """Extract readable Markdown from modern Office Open XML files without heavy converters."""
     ext = input_p.suffix.lower()
     warnings: list[str] = []
+    artifacts: dict = {"office_image_assets": {"copied_count": 0, "copied": []}}
     try:
         with zipfile.ZipFile(input_p) as zf:
             if ext == ".docx":
-                markdown = _docx_to_markdown(zf)
+                markdown, image_artifacts = _docx_to_markdown(zf, run_dir)
             elif ext == ".pptx":
-                markdown = _pptx_to_markdown(zf)
+                markdown, image_artifacts = _pptx_to_markdown(zf, run_dir)
             elif ext == ".xlsx":
                 markdown = _xlsx_to_markdown(zf)
+                image_artifacts = []
             else:
                 raise ValueError(f"Unsupported Office XML extension: {ext}")
+            artifacts["office_image_assets"] = {
+                "copied_count": len(image_artifacts),
+                "copied": image_artifacts[:50],
+            }
     except KeyError as e:
         raise PipelineError(
             "E_CONVERT_INPUT_INVALID",
@@ -1022,16 +1030,16 @@ def _office_xml_to_markdown(input_p: Path) -> tuple[str, list[str]]:
         )
 
     warnings.append("W_OFFICE_XML_CONVERTER_USED: extracted text directly from Office XML; complex layout fidelity may be limited.")
-    return markdown.strip() + "\n", warnings
+    return markdown.strip() + "\n", warnings, artifacts
 
 
-def _docx_to_markdown(zf: zipfile.ZipFile) -> str:
+def _docx_to_markdown(zf: zipfile.ZipFile, run_dir: Path) -> tuple[str, list[str]]:
     import xml.etree.ElementTree as ET
 
     root = ET.fromstring(zf.read("word/document.xml"))
     body = _first_child_by_local_name(root, "body")
     if body is None:
-        return ""
+        return "", []
 
     lines: list[str] = []
     for child in list(body):
@@ -1045,10 +1053,20 @@ def _docx_to_markdown(zf: zipfile.ZipFile) -> str:
             table = _word_table_to_markdown(child)
             if table:
                 lines.append(table)
-    return "\n\n".join(lines)
+    image_lines, image_artifacts = _extract_office_images(
+        zf=zf,
+        part_name="word/document.xml",
+        rels_name="word/_rels/document.xml.rels",
+        run_dir=run_dir,
+        output_prefix="office/docx",
+        alt_prefix="DOCX Image",
+    )
+    if image_lines:
+        lines.extend(["## Embedded Images", *image_lines])
+    return "\n\n".join(lines), image_artifacts
 
 
-def _pptx_to_markdown(zf: zipfile.ZipFile) -> str:
+def _pptx_to_markdown(zf: zipfile.ZipFile, run_dir: Path) -> tuple[str, list[str]]:
     import re
     import xml.etree.ElementTree as ET
 
@@ -1057,14 +1075,25 @@ def _pptx_to_markdown(zf: zipfile.ZipFile) -> str:
         key=lambda name: int(re.search(r"slide(\d+)\.xml", name).group(1)),
     )
     sections: list[str] = []
+    image_artifacts: list[str] = []
     for idx, name in enumerate(slide_names, start=1):
         root = ET.fromstring(zf.read(name))
         paragraphs = _drawing_paragraphs(root)
-        if paragraphs:
-            title = paragraphs[0]
-            body = paragraphs[1:]
+        image_lines, slide_artifacts = _extract_office_images(
+            zf=zf,
+            part_name=name,
+            rels_name=f"ppt/slides/_rels/slide{idx}.xml.rels",
+            run_dir=run_dir,
+            output_prefix=f"office/slide_{idx:03d}",
+            alt_prefix=f"Slide {idx} Image",
+        )
+        image_artifacts.extend(slide_artifacts)
+        if paragraphs or image_lines:
+            title = paragraphs[0] if paragraphs else ""
+            body = paragraphs[1:] if paragraphs else []
             section_lines = [f"# Slide {idx}: {title}"] if title else [f"# Slide {idx}"]
             section_lines.extend(body)
+            section_lines.extend(image_lines)
             sections.append("\n\n".join(section_lines))
 
         notes_name = f"ppt/notesSlides/notesSlide{idx}.xml"
@@ -1073,7 +1102,61 @@ def _pptx_to_markdown(zf: zipfile.ZipFile) -> str:
             notes = _drawing_paragraphs(notes_root)
             if notes:
                 sections.append("\n\n".join([f"## Slide {idx} Notes", *notes]))
-    return "\n\n".join(sections)
+    return "\n\n".join(sections), image_artifacts
+
+
+def _extract_office_images(
+    zf: zipfile.ZipFile,
+    part_name: str,
+    rels_name: str,
+    run_dir: Path,
+    output_prefix: str,
+    alt_prefix: str,
+) -> tuple[list[str], list[str]]:
+    import xml.etree.ElementTree as ET
+
+    if part_name not in zf.namelist() or rels_name not in zf.namelist():
+        return [], []
+
+    root = ET.fromstring(zf.read(part_name))
+    rels_root = ET.fromstring(zf.read(rels_name))
+    relationships: dict[str, str] = {}
+    for rel in list(rels_root):
+        rel_id = _xml_attr_by_local_name(rel, "Id")
+        target = _xml_attr_by_local_name(rel, "Target")
+        mode = (_xml_attr_by_local_name(rel, "TargetMode") or "").lower()
+        if rel_id and target and mode != "external":
+            relationships[rel_id] = target
+
+    lines: list[str] = []
+    copied: list[str] = []
+    seen_sources: set[str] = set()
+    part_dir = posixpath.dirname(part_name)
+    target_root = run_dir / "images"
+
+    for node in root.iter():
+        if _local_name(node.tag) != "blip":
+            continue
+        rel_id = _xml_attr_by_local_name(node, "embed")
+        target = relationships.get(rel_id or "")
+        if not target:
+            continue
+        source_name = posixpath.normpath(posixpath.join(part_dir, target))
+        if source_name in seen_sources or source_name not in zf.namelist():
+            continue
+        if Path(source_name).suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
+        seen_sources.add(source_name)
+
+        rel_output = Path(output_prefix) / Path(source_name).name
+        dst = target_root / rel_output
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(zf.read(source_name))
+        markdown_src = "images/" + rel_output.as_posix()
+        lines.append(f"![{alt_prefix} {len(lines) + 1}]({markdown_src})")
+        copied.append(markdown_src)
+
+    return lines, copied
 
 
 def _write_pptx_content_list(text: str, run_dir: Path) -> dict:

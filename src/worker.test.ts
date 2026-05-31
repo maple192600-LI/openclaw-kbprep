@@ -177,8 +177,9 @@ function makeGarbledTextLayerPdf(pdfPath: string) {
 function makeOfficeFixtures(docxPath: string, pptxPath: string, xlsxPath: string) {
   runPython(
     [
-      "import sys, zipfile",
+      "import base64, sys, zipfile",
       "docx_path, pptx_path, xlsx_path = sys.argv[1:4]",
+      "png1x1 = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=')",
       "def write_zip(path, files):",
       "    with zipfile.ZipFile(path, 'w') as z:",
       "        for name, content in files.items():",
@@ -194,9 +195,12 @@ function makeOfficeFixtures(docxPath: string, pptxPath: string, xlsxPath: string
       "})",
       "write_zip(pptx_path, {",
       "  '[Content_Types].xml': '<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"/>',",
-      "  'ppt/slides/slide1.xml': '''<p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree>",
+      "  'ppt/slides/slide1.xml': '''<p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><p:cSld><p:spTree>",
       "    <p:sp><p:txBody><a:p><a:r><a:t>PPT Tutorial Slide</a:t></a:r></a:p><a:p><a:r><a:t>Keep platform setup steps and failure_reason=timeout.</a:t></a:r></a:p></p:txBody></p:sp>",
+      "    <p:pic><p:blipFill><a:blip r:embed=\"rIdImage1\"/></p:blipFill></p:pic>",
       "  </p:spTree></p:cSld></p:sld>''',",
+      "  'ppt/slides/_rels/slide1.xml.rels': '''<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rIdImage1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"../media/step.png\"/></Relationships>''',",
+      "  'ppt/media/step.png': png1x1,",
       "  'ppt/slides/slide2.xml': '''<p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><p:cSld><p:spTree>",
       "    <p:sp><p:txBody><a:p><a:r><a:t>PPT Case Slide</a:t></a:r></a:p><a:p><a:r><a:t>Record retry_count=3 and keep the failed account example.</a:t></a:r></a:p></p:txBody></p:sp>",
       "  </p:spTree></p:cSld></p:sld>'''",
@@ -1703,7 +1707,13 @@ describe("kbprep worker pipeline", () => {
           input: pptxPath,
           out: path.join(root, "pptx-out"),
           format: "pptx",
-          expected: ["# Slide 1: PPT Tutorial Slide", "failure_reason=timeout", "# Slide 2: PPT Case Slide", "retry_count=3"],
+          expected: [
+            "# Slide 1: PPT Tutorial Slide",
+            "failure_reason=timeout",
+            "![Slide 1 Image 1](images/office/slide_001/step.png)",
+            "# Slide 2: PPT Case Slide",
+            "retry_count=3",
+          ],
         },
         {
           input: xlsxPath,
@@ -1756,6 +1766,8 @@ describe("kbprep worker pipeline", () => {
           expect(manifest.map((entry) => entry.split_strategy)).toContain("preserve_slide_or_page_order");
           expect(manifest.some((entry) => entry.page_start === 0)).toBe(true);
           expect(manifest.some((entry) => entry.page_start === 1)).toBe(true);
+          expect(conversionReport.mineru_artifacts.office_image_assets.copied_count).toBe(1);
+          expect(existsSync(path.join(item.out, "images", "office", "slide_001", "step.png"))).toBe(true);
         }
         for (const expected of item.expected) {
           expect(converted).toContain(expected);
