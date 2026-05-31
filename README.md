@@ -76,6 +76,8 @@ For trusted PDF text layers, the converter also unwraps common hard line breaks 
 
 Some PDFs contain an embedded text layer that exists but is not readable because of custom font encoding. Diagnosis treats high replacement-character or non-common-Unicode ratios as an untrusted garbled text layer and routes those files to MinerU/OCR instead of publishing broken Markdown.
 
+If a PDF looks trustworthy during diagnosis but the later text-layer conversion still produces unreadable Markdown, `kbprep_prepare` automatically saves that rejected text-layer output as `converted.pdf_text_layer.rejected.md`, reruns MinerU in OCR mode, and records `W_PDF_TEXT_LAYER_FALLBACK_TO_OCR` in `conversion_report.json`.
+
 Internal PDF page markers are kept as block/page metadata for traceability, but they are not rendered into `cleaned.md` or long-document `parts/` files. The readable Markdown output should contain knowledge content, not conversion comments.
 
 When a useful source/cover block also contains standalone promotional lines such as public-account follow prompts, companion-video ads, or update-channel notices, those lines are split into `discarded.md` while the rest of the source metadata and tutorial body stays in `cleaned.md`.

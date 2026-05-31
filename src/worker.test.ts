@@ -1390,6 +1390,86 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("falls back to MinerU when a trusted PDF text-layer conversion produces unreadable Markdown", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-pdf-fallback-"));
+    try {
+      const inputPath = path.join(root, "tutorial.pdf");
+      const outputRoot = path.join(root, "output");
+      makeTextLayerPdf(inputPath);
+
+      runPython(
+        [
+          "import io, json, sys",
+          "from pathlib import Path",
+          "from kbprep_worker import mineru_adapter, pdf_text, prepare",
+          "input_path = Path(sys.argv[1])",
+          "output_root = Path(sys.argv[2])",
+          "calls = []",
+          "def bad_text_layer(input_path, output_path, run_dir):",
+          "    output_path.write_text(('Ჭ䌦圳➉ᵜⰭ䕇✮⦽ ' * 120) + '\\n', encoding='utf-8')",
+          "    content_list = run_dir / 'pdf_text_content_list.json'",
+          "    content_list.write_text('[]', encoding='utf-8')",
+          "    return {",
+          "        'source_md_path': str(output_path),",
+          "        'content_list_path': str(content_list),",
+          "        'content_list_v2_path': None,",
+          "        'middle_json_path': None,",
+          "        'assets_dir': None,",
+          "        'converter': 'pdf_text_layer',",
+          "        'warnings': ['fake bad text layer'],",
+          "    }",
+          "def fake_mineru(**kwargs):",
+          "    calls.append(kwargs.get('mode'))",
+          "    out = Path(kwargs['output_dir']) / 'mineru_ocr.md'",
+          "    out.write_text('# OCR result\\n\\n1. Open settings and keep threshold=0.8.\\n\\nRetry_count=3 must stay.\\n', encoding='utf-8')",
+          "    return {",
+          "        'source_md_path': str(out),",
+          "        'content_list_path': None,",
+          "        'content_list_v2_path': None,",
+          "        'middle_json_path': None,",
+          "        'assets_dir': None,",
+          "        'converter': 'mineru',",
+          "        'warnings': ['fake mineru fallback'],",
+          "    }",
+          "pdf_text.convert_text_layer_pdf = bad_text_layer",
+          "mineru_adapter.run_mineru = fake_mineru",
+          "stdout = io.StringIO()",
+          "old_stdout = sys.stdout",
+          "try:",
+          "    sys.stdout = stdout",
+          "    try:",
+          "        prepare.run({",
+          "            'input_path': str(input_path),",
+          "            'output_root': str(output_root),",
+          "            'profile': 'standard',",
+          "            'mode': 'rules_only',",
+          "            'language': 'zh',",
+          "            'source_type': 'auto',",
+          "            'splitter': 'auto',",
+          "            'force': True,",
+          "        })",
+          "    except SystemExit:",
+          "        pass",
+          "finally:",
+          "    sys.stdout = old_stdout",
+          "payload = json.loads(stdout.getvalue())",
+          "assert payload['ok'] is True, payload",
+          "assert calls == ['ocr'], calls",
+          "cleaned = Path(payload['data']['latest_outputs']['cleaned_md']).read_text(encoding='utf-8')",
+          "report = json.loads(Path(payload['data']['latest_outputs']['conversion_report']).read_text(encoding='utf-8'))",
+          "assert 'threshold=0.8' in cleaned, cleaned",
+          "assert 'Ჭ䌦圳' not in cleaned, cleaned",
+          "assert report['converter'] == 'mineru_after_pdf_text_layer_fallback', report",
+          "assert report['mineru_artifacts']['fallback_from'] == 'pdf_text_layer', report",
+          "assert any('W_PDF_TEXT_LAYER_FALLBACK_TO_OCR' in warning for warning in report['warnings']), report",
+        ].join("\n"),
+        [inputPath, outputRoot],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("unwraps trusted PDF text-layer hard line breaks without merging structural lines", () => {
     runPython(
       [

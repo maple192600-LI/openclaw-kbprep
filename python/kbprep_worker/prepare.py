@@ -198,26 +198,30 @@ def run(data: dict) -> None:
                 {"extension": ext},
             )
         elif ext == ".pdf" and diagnosis.get("conversion_strategy") in {"pdf_text_layer", "pdf_text_layer_slide_order"}:
-            from .pdf_text import convert_text_layer_pdf
-            result = convert_text_layer_pdf(input_p, converted_path, run_dir)
+            from . import pdf_text
+            result = pdf_text.convert_text_layer_pdf(input_p, converted_path, run_dir)
             mineru_artifacts = result
             warnings.extend(result.get("warnings", []))
             _stderr_log("info", "convert", "PDF text layer converted directly")
-        else:
-            _validate_convertible_container(input_p)
-            from .mineru_adapter import run_mineru
-            # Map pipeline mode to MinerU conversion mode
-            mineru_mode = "auto"  # MinerU accepts: auto, txt, ocr
-            result = run_mineru(
-                input_path=str(input_p),
-                output_dir=str(run_dir),
+            fallback = _maybe_fallback_pdf_text_layer_to_mineru(
+                input_p=input_p,
+                converted_path=converted_path,
+                run_dir=run_dir,
                 language=language,
-                mode=mineru_mode,
-                keep_debug_files=False,
+                text_layer_artifacts=result,
             )
-            source_md = Path(result["source_md_path"])
-            if source_md.exists():
-                shutil.copy2(str(source_md), str(converted_path))
+            if fallback:
+                mineru_artifacts = fallback
+                warnings.extend(fallback.get("warnings", []))
+                _stderr_log("warn", "convert", "PDF text layer was unreadable; fell back to MinerU OCR")
+        else:
+            result = _run_mineru_conversion(
+                input_p=input_p,
+                converted_path=converted_path,
+                run_dir=run_dir,
+                language=language,
+                mode="auto",
+            )
             mineru_artifacts = result
             warnings.extend(result.get("warnings", []))
             _stderr_log("info", "convert", "MinerU conversion complete")
@@ -236,6 +240,7 @@ def run(data: dict) -> None:
                 else "direct_text" if ext in direct_exts
                 else "office_xml" if ext in office_xml_exts
                 else "epub_xhtml" if mineru_artifacts.get("converter") == "epub_xhtml"
+                else "mineru_after_pdf_text_layer_fallback" if mineru_artifacts.get("fallback_from") == "pdf_text_layer"
                 else "pdf_text_layer" if mineru_artifacts.get("converter") == "pdf_text_layer"
                 else "mineru"
             ),
@@ -719,6 +724,90 @@ def _validate_convertible_container(input_p: Path) -> None:
             f"{input_p.name} is not a valid Office ZIP container. Check whether the file is corrupted or mislabeled.",
             {"extension": input_p.suffix.lower()},
         )
+
+
+def _run_mineru_conversion(
+    input_p: Path,
+    converted_path: Path,
+    run_dir: Path,
+    language: str,
+    mode: str,
+) -> dict:
+    _validate_convertible_container(input_p)
+    from . import mineru_adapter
+
+    result = mineru_adapter.run_mineru(
+        input_path=str(input_p),
+        output_dir=str(run_dir),
+        language=language,
+        mode=mode,
+        keep_debug_files=False,
+    )
+    source_md = Path(result["source_md_path"])
+    if not source_md.exists():
+        raise PipelineError(
+            "E_CONVERT_OUTPUT_MISSING",
+            f"MinerU did not produce source Markdown: {source_md}",
+            {"source_md_path": str(source_md)},
+        )
+    shutil.copy2(str(source_md), str(converted_path))
+    return result
+
+
+def _maybe_fallback_pdf_text_layer_to_mineru(
+    input_p: Path,
+    converted_path: Path,
+    run_dir: Path,
+    language: str,
+    text_layer_artifacts: dict,
+) -> dict | None:
+    text = converted_path.read_text(encoding="utf-8") if converted_path.exists() else ""
+    quality = _converted_text_quality(text)
+    text_layer_artifacts["post_convert_text_quality"] = quality
+
+    if not _pdf_text_layer_output_needs_ocr(quality):
+        return None
+
+    rejected_path = run_dir / "converted.pdf_text_layer.rejected.md"
+    if converted_path.exists():
+        shutil.copy2(str(converted_path), str(rejected_path))
+
+    fallback = _run_mineru_conversion(
+        input_p=input_p,
+        converted_path=converted_path,
+        run_dir=run_dir,
+        language=language,
+        mode="ocr",
+    )
+    fallback["fallback_from"] = "pdf_text_layer"
+    fallback["fallback_reason"] = "post_convert_text_unreadable"
+    fallback["rejected_text_layer_md"] = str(rejected_path)
+    fallback["post_convert_text_quality"] = quality
+    fallback["warnings"] = [
+        *fallback.get("warnings", []),
+        (
+            "W_PDF_TEXT_LAYER_FALLBACK_TO_OCR: text-layer conversion produced unreadable Markdown "
+            f"(unreadable={quality.get('unreadable_text_ratio', 0):.2%}, "
+            f"garbled={quality.get('garbled_ratio', 0):.2%}); reran MinerU in OCR mode."
+        ),
+    ]
+    return fallback
+
+
+def _converted_text_quality(text: str) -> dict:
+    from .diagnose import analyze_text_quality
+    return analyze_text_quality(text)
+
+
+def _pdf_text_layer_output_needs_ocr(quality: dict) -> bool:
+    return (
+        quality.get("total_chars", 0) > 0
+        and (
+            quality.get("unreadable_text_ratio", 0) > 0.08
+            or quality.get("garbled_ratio", 0) > 0.08
+            or quality.get("replacement_char_ratio", 0) > 0.08
+        )
+    )
 
 
 def _office_xml_to_markdown(input_p: Path) -> tuple[str, list[str]]:
