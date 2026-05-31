@@ -40,10 +40,14 @@ MOJIBAKE_RE = re.compile(
     r'(?:[鐩綍绔鍏姝鏄鐨瀹鏂杩鎴搴閰瑙涓叧妯鍙鎶姟鍔卞彂]{2,}|[鈥聽銆€]{1,})'
 )
 MOJIBAKE_CHAR_RE = re.compile(r'[鐩綍绔鍏姝鏄鐨瀹鏂杩鎴搴閰瑙涓叧妯鍙鎶姟鍔卞彂绯荤粺]')
-# QR code indicators in text
-QR_TEXT_RE = re.compile(r'(?:扫码|二维码|扫一扫|QR\s*code|qrcode)', re.IGNORECASE)
-# CTA indicators
-CTA_TEXT_RE = re.compile(r'(?:扫码(?:加入|入群)|添加.*服务官|免费领取.*体验卡|限时优惠|立即购买|点击链接)', re.IGNORECASE)
+# QR code indicators in readable text.
+QR_TEXT_RE = re.compile(r'(?:扫码|二维码|扫一[扫下]|QR\s*code|qrcode)', re.IGNORECASE)
+# CTA indicators in readable text.
+CTA_TEXT_RE = re.compile(
+    r'(?:扫码(?:加入|入群|进群)|添加.*(?:客服|助理|老师|服务官)|免费领取|体验卡|'
+    r'限时优惠|立即购买|立即报名|点击链接|长按识别)',
+    re.IGNORECASE,
+)
 
 
 MOJIBAKE_TOKEN_RE = re.compile(

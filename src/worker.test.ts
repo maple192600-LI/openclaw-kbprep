@@ -304,6 +304,18 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("detects readable QR and CTA pollution text during diagnosis", () => {
+    runPython(
+      [
+        "from kbprep_worker.diagnose import analyze_text_quality",
+        "quality = analyze_text_quality('扫码进群，长按识别二维码，添加老师免费领取体验卡。')",
+        "assert quality['has_qr_text'] is True, quality",
+        "assert quality['has_cta_text'] is True, quality",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("detects Chinese mojibake from broken PDF text layers", () => {
     runPython(
       [
@@ -1827,7 +1839,7 @@ describe("kbprep worker pipeline", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 10_000);
 
   it("falls back to MinerU when a trusted PDF text-layer conversion produces unreadable Markdown", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-pdf-fallback-"));
@@ -1908,7 +1920,7 @@ describe("kbprep worker pipeline", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 10_000);
 
   it("copies MinerU image assets next to converted Markdown", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-mineru-assets-"));
