@@ -6,13 +6,35 @@ The plugin focuses on preparation only: detect file type, convert as losslessly 
 
 It does not build a RAG index, generate wiki pages, or download from remote platforms.
 
-## Tool Flow
+## Use It For One Thing
 
-1. `kbprep_preflight`: check Python, MinerU, device mode, model cache, disk, memory, and workspace write access.
-2. `kbprep_analyze`: detect file family, PDF subtype, text profile, OCR recommendation, and processing route.
-3. `kbprep_prepare`: process one local source into `diagnosis_report.json`, `converted.md`, `blocks.jsonl`, `cleaned.md`, `discarded.md`, `review_needed.md`, `conversion_report.json`, and `quality_report.json`.
-4. `kbprep_apply_review`: apply guarded AI/human block classification patches without rewriting source text.
-5. `kbprep_prepare_batch`: process a directory after one representative sample passes.
+Give the plugin a local raw file. It produces readable Markdown for a knowledge base.
+
+Default entry:
+
+```text
+kbprep_prepare(input_path, output_root)
+```
+
+Expected output:
+
+- `original/`: original file backup
+- `converted.md`: converted Markdown before cleaning
+- `blocks.jsonl`: content blocks in original order
+- `cleaned.md`: final readable Markdown
+- `discarded.md`: removed pollution with reasons
+- `review_needed.md`: uncertain content for manual review
+- `quality_report.json`: retention and quality checks
+
+Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when you want an AI or human to review uncertain blocks. Use `mode="ai_review"` only when OpenClaw subagents are available and you accept the extra model call.
+
+## Tools
+
+- `kbprep_prepare`: main tool. Convert one local source file into clean Markdown.
+- `kbprep_analyze`: optional read-only check for file type, PDF subtype, text quality, and route.
+- `kbprep_preflight`: optional runtime check before large PDF/OCR work.
+- `kbprep_apply_review`: optional guarded metadata patch for human/AI review results. It cannot rewrite source text.
+- `kbprep_prepare_batch`: optional directory mode. It is for repeated local files, not platform harvesting.
 
 For audio/video, v1 handles local subtitle, transcript, or ASR text files. It does not automatically download or transcribe binary media.
 Batch runs write `batch_inventory.json`, so unsupported or skipped local files are visible instead of silently ignored. Audio/video binaries are marked as `media_binary_not_transcribed_in_v1`; unknown extensions are marked as unsupported.
