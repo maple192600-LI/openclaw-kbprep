@@ -22,6 +22,7 @@ import zipfile
 from html.parser import HTMLParser
 from pathlib import Path
 
+from . import __version__
 from .envelope import ok, fail
 from .supported_formats import (
     CODE_EXTENSIONS,
@@ -84,7 +85,7 @@ def run(data: dict) -> None:
         file_hash = hashlib.sha256(file_bytes).hexdigest()
         file_size = len(file_bytes)
 
-        plugin_version = "0.4.0"
+        plugin_version = __version__
         mineru_version = _get_mineru_version()
         python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
         runtime = _runtime_snapshot(mineru_version)

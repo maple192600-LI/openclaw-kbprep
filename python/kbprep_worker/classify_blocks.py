@@ -195,6 +195,10 @@ def _is_contextual_cta_knowledge(text: str) -> bool:
         "\u9608\u503c", "\u5224\u5b9a", "\u6807\u8bb0", "\u8bb0\u5f55",
         "risk_label", "failure_reason", "\u4e0d\u8981\u76f4\u63a5\u5220\u9664",
         "\u4e0d\u80fd\u53ea\u56e0\u4e3a", "\u4fdd\u7559\u5b8c\u6574\u4e0a\u4e0b\u6587",
+        "\u6e05\u6d17", "\u6c61\u67d3", "\u6c61\u67d3\u6e90", "\u6b63\u6587",
+        "\u8bef\u5220", "\u5220\u9519", "\u8303\u56f4", "\u6d4b\u8bd5",
+        "\u56fe\u7247\u6e05\u6d17", "\u8425\u9500\u56fe", "\u4e8c\u7ef4\u7801\u56fe",
+        "cleaned.md", "discarded.md", "review_needed.md",
     ]
     if any(term in text for term in knowledge_terms):
         return True

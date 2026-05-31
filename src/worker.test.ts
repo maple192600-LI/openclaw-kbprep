@@ -869,6 +869,46 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("keeps cleanup-analysis paragraphs that mention QR or CTA pollution", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-cleanup-analysis-"));
+    try {
+      const inputPath = path.join(root, "analysis.md");
+      const outputRoot = path.join(root, "out");
+      writeFileSync(
+        inputPath,
+        [
+          "# 清洗复盘",
+          "",
+          "当前清洗版的问题之一，是图片几乎没有进入清洗范围，所以营销图和二维码图仍然可能留在 `cleaned.md`。这句话是正文分析，不能当广告删除。",
+          "",
+          "扫码加入社群领取体验卡。",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare", {
+        input_path: inputPath,
+        output_root: outputRoot,
+        profile: "standard",
+        mode: "rules_only",
+        force: true,
+        language: "zh",
+        source_type: "auto",
+        splitter: "auto",
+      });
+
+      const cleaned = readFileSync(path.join(outputRoot, "cleaned.md"), "utf8");
+      const discarded = readFileSync(path.join(outputRoot, "discarded.md"), "utf8");
+
+      expect(envelope.data.strict_errors).toEqual([]);
+      expect(cleaned).toContain("二维码图仍然可能留在 `cleaned.md`");
+      expect(discarded).toContain("扫码加入社群领取体验卡");
+      expect(discarded).not.toContain("二维码图仍然可能留在 `cleaned.md`");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 15_000);
+
   it("keeps short unnumbered case details that mention CTA phrases", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-case-cta-"));
     try {
@@ -1656,7 +1696,7 @@ describe("kbprep worker pipeline", () => {
       expect(latest.review_applied_at).toBeTypeOf("number");
       expect(updatedQuality.runtime_cache_key).toBeTypeOf("string");
       expect(updatedQuality.runtime.python_executable).toContain("python");
-      expect(updatedQuality.plugin_version).toBe("0.4.0");
+      expect(updatedQuality.plugin_version).toBe("0.4.1");
       expect(updatedQuality.review_applied_at).toBeTypeOf("number");
       expect(reviewNeeded).toContain("扫码加入社群领取体验卡");
     } finally {
@@ -1676,7 +1716,7 @@ describe("kbprep worker pipeline", () => {
           "run_dir.mkdir(parents=True, exist_ok=True)",
           "(run_dir / 'chunks').mkdir()",
           "(run_dir / 'diagnosis_report.json').write_text(json.dumps({'diagnosis': {'file_id': 'review-detail'}}), encoding='utf-8')",
-          "(run_dir / 'quality_report.json').write_text(json.dumps({'source_type': 'markdown_note', 'source_sha256': 'review-detail', 'plugin_version': '0.4.0'}), encoding='utf-8')",
+          "(run_dir / 'quality_report.json').write_text(json.dumps({'source_type': 'markdown_note', 'source_sha256': 'review-detail', 'plugin_version': '0.4.1'}), encoding='utf-8')",
           "blocks = [",
           "  {'block_id': 'detail1', 'source_sha256': 'review-detail', 'status': 'keep', 'type': 'paragraph', 'text': '失败经验：连续 3 次失败时，记录 failure_reason 并人工复查。', 'protected': False, 'risk_tags': [], 'confidence': 0.7},",
           "  {'block_id': 'cta1', 'source_sha256': 'review-detail', 'status': 'discard', 'type': 'marketing_cta', 'text': '扫码入群领取体验卡', 'protected': False, 'risk_tags': [], 'confidence': 0.95},",
