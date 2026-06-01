@@ -51,7 +51,7 @@ def _available_memory_gb() -> float:
 
 
 def _process_one_file(file_path: Path, output_root: str, profile: str,
-                      language: str, mode: str, force: bool) -> dict:
+                      language: str, mode: str, force: bool, artifact_policy: str = "keep_latest") -> dict:
     payload = {
         "input_path": str(file_path),
         "output_root": output_root,
@@ -61,6 +61,7 @@ def _process_one_file(file_path: Path, output_root: str, profile: str,
         "source_type": "auto",
         "splitter": "auto",
         "force": force,
+        "artifact_policy": artifact_policy,
     }
     proc = subprocess.run(
         [sys.executable, "-m", "kbprep_worker.cli", "prepare", "--json-stdin"],
@@ -104,6 +105,14 @@ def _safe_output_dir_name(file_path: Path) -> str:
 
 def _output_root_for_file(batch_output_root: Path, file_path: Path) -> Path:
     return batch_output_root / "files" / _safe_output_dir_name(file_path)
+
+
+def _source_final_from_result(data: dict) -> str | None:
+    latest_outputs = data.get("latest_outputs", {})
+    final_md = latest_outputs.get("final_md")
+    if final_md and Path(final_md).exists():
+        return final_md
+    return None
 
 
 def _write_progress(output_root: Path, payload: dict) -> None:
@@ -190,6 +199,7 @@ def run(data: dict) -> None:
     language = data.get("language", "zh")
     mode = data.get("mode", "rules_only")
     force = data.get("force", False)
+    artifact_policy = data.get("artifact_policy", "keep_latest")
     min_free_gb = data.get("min_free_memory_gb", DEFAULT_MIN_FREE_GB)
     convert_jobs = int(data.get("convert_jobs", 1))
 
@@ -237,14 +247,20 @@ def run(data: dict) -> None:
         "started_at": started_at,
     })
     sample_output_root = _output_root_for_file(output_p, sample)
-    sample_result = _process_one_file(sample, str(sample_output_root), profile, language, mode, force)
-    results.append({
+    sample_result = _process_one_file(sample, str(sample_output_root), profile, language, mode, force, artifact_policy)
+    sample_data = sample_result.get("data", {})
+    sample_entry = {
         "file": sample.name,
         "relative_path": sample_relative_path,
         "output_root": str(sample_output_root),
-        **sample_result.get("data", {}),
+        **sample_data,
         "ok": sample_result.get("ok", False),
-    })
+    }
+    if sample_result.get("ok") and not sample_data.get("strict_errors"):
+        batch_final = _source_final_from_result(sample_data)
+        if batch_final:
+            sample_entry["batch_final_md"] = batch_final
+    results.append(sample_entry)
     if not sample_result.get("ok") or sample_result.get("data", {}).get("strict_errors"):
         failures.append({
             "file": sample.name,
@@ -283,13 +299,18 @@ def run(data: dict) -> None:
             if out.get("data", {}).get("skipped"):
                 skipped += 1
             file_output_root = _output_root_for_file(output_p, f)
-            results.append({
+            out_data = out.get("data", {})
+            entry = {
                 "file": f.name,
                 "relative_path": relative_paths[f],
                 "output_root": str(file_output_root),
-                **out.get("data", {}),
+                **out_data,
                 "ok": True,
-            })
+            }
+            batch_final = _source_final_from_result(out_data)
+            if batch_final:
+                entry["batch_final_md"] = batch_final
+            results.append(entry)
         else:
             failed += 1
             file_output_root = _output_root_for_file(output_p, f)
@@ -331,6 +352,7 @@ def run(data: dict) -> None:
                 language,
                 mode,
                 force,
+                artifact_policy,
             )
         except Exception as exc:
             out = {"ok": False, "error": {"message": str(exc)}}
@@ -348,6 +370,7 @@ def run(data: dict) -> None:
                     language,
                     mode,
                     force,
+                    artifact_policy,
                 ): f
                 for f in light_remaining
             }

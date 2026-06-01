@@ -1069,6 +1069,69 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("publishes the final markdown beside the source file with a source-derived name", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-final-name-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "OpenClaw橙皮书.txt");
+      writeFileSync(
+        sourcePath,
+        ["# OpenClaw橙皮书", "", "步骤1：保留 FINAL_NAME_MARKER，并设置 threshold=0.8。"].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        profile: "tutorial",
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+
+      const finalPath = path.join(inputDir, "OpenClaw橙皮书.md");
+      expect(envelope.data.latest_outputs.final_md).toBe(finalPath);
+      expect(existsSync(finalPath)).toBe(true);
+      expect(readFileSync(finalPath, "utf8")).toContain("FINAL_NAME_MARKER");
+      expect(existsSync(path.join(outputRoot, "cleaned.md"))).toBe(true);
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not overwrite markdown source files when publishing the final markdown", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-final-md-source-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "daily-note.md");
+      const original = ["# 原始笔记", "", "步骤1：保留 ORIGINAL_MARKDOWN_MARKER。"].join("\n");
+      writeFileSync(sourcePath, original, "utf8");
+
+      const envelope = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        profile: "tutorial",
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+
+      const finalPath = path.join(inputDir, "daily-note.cleaned.md");
+      expect(envelope.data.latest_outputs.final_md).toBe(finalPath);
+      expect(readFileSync(sourcePath, "utf8")).toBe(original);
+      expect(readFileSync(finalPath, "utf8")).toContain("ORIGINAL_MARKDOWN_MARKER");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("keeps cleanup-analysis paragraphs that mention QR or CTA pollution", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-cleanup-analysis-"));
     try {
@@ -2471,6 +2534,7 @@ describe("kbprep worker pipeline", () => {
       const results = envelope.data.results as Array<{
         file: string;
         latest_outputs: { cleaned_md: string };
+        batch_final_md?: string;
       }>;
       const cleanedDirs = new Set(results.map((result) => path.dirname(result.latest_outputs.cleaned_md)));
 
@@ -2489,6 +2553,10 @@ describe("kbprep worker pipeline", () => {
       expect(alphaCleaned).not.toContain("BETA_UNIQUE_MARKER");
       expect(betaCleaned).toContain("BETA_UNIQUE_MARKER");
       expect(betaCleaned).not.toContain("ALPHA_UNIQUE_MARKER");
+      expect(alpha!.batch_final_md).toBe(path.join(inputDir, "alpha.cleaned.md"));
+      expect(beta!.batch_final_md).toBe(path.join(inputDir, "beta.cleaned.md"));
+      expect(readFileSync(path.join(inputDir, "alpha.cleaned.md"), "utf8")).toContain("ALPHA_UNIQUE_MARKER");
+      expect(readFileSync(path.join(inputDir, "beta.cleaned.md"), "utf8")).toContain("BETA_UNIQUE_MARKER");
       expect(existsSync(path.join(outputRoot, "progress.json"))).toBe(true);
       expect(existsSync(path.join(outputRoot, "failures.json"))).toBe(true);
     } finally {
@@ -2628,7 +2696,7 @@ describe("kbprep worker pipeline", () => {
         "active_pdf = 0",
         "max_active_pdf = 0",
         "calls = []",
-        "def fake_process_one_file(file_path, output_root, profile, language, mode, force):",
+        "def fake_process_one_file(file_path, output_root, profile, language, mode, force, artifact_policy='keep_latest'):",
         "    global active_pdf, max_active_pdf",
         "    suffix = Path(file_path).suffix.lower()",
         "    calls.append(Path(file_path).name)",

@@ -34,12 +34,17 @@ Expected output:
 - `converted.md`: converted Markdown before cleaning
 - `blocks.jsonl`: content blocks in original order
 - `cleaned.md`: final readable Markdown
+- source-side final Markdown: a direct-use `.md` file next to the source file, named from the source file stem
 - `discarded.md`: removed pollution with reasons
 - `review_needed.md`: uncertain content for manual review
 - `images/`: copied local or embedded image assets referenced by the Markdown output
 - `quality_report.json`: retention and quality checks
 
+For daily use, the source-side final Markdown is the file to move into or keep in your knowledge base. For example, `OpenClaw橙皮书.pdf` publishes `OpenClaw橙皮书.md` beside the source file. If the source itself is already Markdown, the plugin publishes `name.cleaned.md` instead of overwriting the original note. Image assets for that final file are copied beside the source as `name.assets/`.
+
 `discarded.md`, `review_needed.md`, and `evidence/marketing_pages.md` include compact trace comments before each block: block id, type, page range when available, heading path, risk tags, confidence, and reason. The text itself is kept verbatim so a human can recover or audit anything that was removed from `cleaned.md`.
+
+Intermediate audit files remain under `output_root`. By default the plugin uses `artifact_policy="keep_latest"`: the direct-use result is published beside the source, while old `runs/` history is pruned so normal users do not accumulate endless cache-like artifacts. Use `artifact_policy="keep_all"` only when you intentionally want full history for auditing, or `artifact_policy="final_only"` when you want the leanest run history.
 
 Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when you want an AI or human to review uncertain blocks. Use `mode="ai_review"` only when OpenClaw subagents are available and you accept the extra model call.
 

@@ -376,6 +376,11 @@ export default defineToolPlugin({
           })
         ),
         force: Type.Optional(Type.Boolean({ description: "Force re-process even if same hash+config. Default false." })),
+        artifact_policy: Type.Optional(
+          Type.Union([Type.Literal("keep_latest"), Type.Literal("keep_all"), Type.Literal("final_only")], {
+            description: "Intermediate artifact retention. Default 'keep_latest' keeps the latest successful outputs and prunes old runs.",
+          })
+        ),
         language: Type.Optional(Type.String({ description: "Language hint. Default 'zh'." })),
         source_type: Type.Optional(sourceTypeSchema),
         splitter: Type.Optional(sourceTypeSchema),
@@ -394,6 +399,7 @@ export default defineToolPlugin({
           profile: params.profile ?? "standard",
           mode: workerMode,
           force: params.force ?? false,
+          artifact_policy: params.artifact_policy ?? "keep_latest",
           language: params.language ?? "zh",
           source_type: params.source_type ?? "auto",
           splitter: params.splitter ?? "auto",
@@ -460,6 +466,11 @@ export default defineToolPlugin({
           })
         ),
         force: Type.Optional(Type.Boolean({ description: "Force re-process even if same hash+config. Default false." })),
+        artifact_policy: Type.Optional(
+          Type.Union([Type.Literal("keep_latest"), Type.Literal("keep_all"), Type.Literal("final_only")], {
+            description: "Intermediate artifact retention for each file. Default 'keep_latest'.",
+          })
+        ),
         language: Type.Optional(Type.String({ description: "Language hint. Default 'zh'." })),
         convert_jobs: Type.Optional(Type.Number({ description: "Max concurrent conversions after the sample passes. Default 1." })),
       }),
@@ -472,6 +483,7 @@ export default defineToolPlugin({
           profile: params.profile ?? "standard",
           mode: params.mode ?? "rules_only",
           force: params.force ?? false,
+          artifact_policy: params.artifact_policy ?? "keep_latest",
           language: params.language ?? "zh",
           convert_jobs: params.convert_jobs ?? 1,
         }, {

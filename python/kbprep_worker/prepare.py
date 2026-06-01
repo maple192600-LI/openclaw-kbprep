@@ -69,6 +69,7 @@ def run(data: dict) -> None:
     language = data.get("language", "zh")
     override_source_type = data.get("source_type", "auto")
     override_splitter = data.get("splitter", "auto")
+    artifact_policy = data.get("artifact_policy", "keep_latest")
 
     warnings: list[str] = []
     strict_errors: list[str] = []
@@ -104,6 +105,7 @@ def run(data: dict) -> None:
             "mode": mode,
             "splitter": override_splitter,
             "profile": profile,
+            "artifact_policy": artifact_policy,
         }, sort_keys=True)
         config_hash = hashlib.sha256(config_str.encode()).hexdigest()[:16]
 
@@ -121,10 +123,12 @@ def run(data: dict) -> None:
             existing = _find_existing_run(root_p, file_hash, config_hash, plugin_version, runtime_cache_key)
             if existing:
                 _stderr_log("info", "original_preserve", f"Skipping: matching run {existing['run_id']}")
+                latest_outputs = _publish_latest_outputs(Path(existing["run_dir"]), root_p, input_p)
                 ok(data={
                     "ok": True,
                     "run_id": existing["run_id"],
                     "run_dir": existing["run_dir"],
+                    "latest_outputs": latest_outputs,
                     "skipped": True,
                     "warnings": ["Already processed with same config. Use force=true to re-process."],
                     "strict_errors": [],
@@ -429,9 +433,10 @@ def run(data: dict) -> None:
     except Exception as e:
         _stderr_log("warn", "audit", f"Failed to generate audit.md: {e}")
     # Update latest.json
-    latest_outputs = _latest_output_paths(root_p)
+    latest_outputs = _latest_output_paths(root_p, input_p)
     if not strict_errors:
-        latest_outputs = _publish_latest_outputs(run_dir, root_p)
+        latest_outputs = _publish_latest_outputs(run_dir, root_p, input_p)
+        _apply_artifact_policy(root_p, run_dir, artifact_policy)
         latest_file.write_text(json.dumps({
             "source_sha256": file_hash,
             "run_id": run_id,
@@ -493,13 +498,17 @@ def run(data: dict) -> None:
     }, warnings=warnings)
 
 
-def _latest_output_paths(root_p: Path) -> dict:
+def _latest_output_paths(root_p: Path, input_p: Path | None = None) -> dict:
     """Return stable top-level paths for the latest successful run."""
+    final_md = _source_final_markdown_path(input_p) if input_p else root_p / "cleaned.md"
+    final_assets_dir = _source_final_assets_dir(input_p) if input_p else root_p / "images"
     return {
         "converted_md": str(root_p / "converted.md"),
         "diagnosis_report": str(root_p / "diagnosis_report.json"),
         "blocks_jsonl": str(root_p / "blocks.jsonl"),
         "cleaned_md": str(root_p / "cleaned.md"),
+        "final_md": str(final_md),
+        "final_assets_dir": str(final_assets_dir),
         "discarded_md": str(root_p / "discarded.md"),
         "review_needed_md": str(root_p / "review_needed.md"),
         "quality_report": str(root_p / "quality_report.json"),
@@ -620,7 +629,7 @@ def _write_error_report_from_context(
         }
 
 
-def _publish_latest_outputs(run_dir: Path, root_p: Path) -> dict:
+def _publish_latest_outputs(run_dir: Path, root_p: Path, input_p: Path) -> dict:
     """Copy successful run artifacts to output_root for direct reading."""
     root_p.mkdir(parents=True, exist_ok=True)
     for name in [
@@ -642,6 +651,8 @@ def _publish_latest_outputs(run_dir: Path, root_p: Path) -> dict:
         elif dst.exists() and name == "review_pack.json":
             dst.unlink()
 
+    _publish_direct_final_to_source(run_dir, input_p)
+
     src_parts = run_dir / "parts"
     dst_parts = root_p / "parts"
     if dst_parts.exists():
@@ -660,7 +671,85 @@ def _publish_latest_outputs(run_dir: Path, root_p: Path) -> dict:
     else:
         dst_images.mkdir(parents=True, exist_ok=True)
 
-    return _latest_output_paths(root_p)
+    return _latest_output_paths(root_p, input_p)
+
+
+def _publish_direct_final_to_source(run_dir: Path, input_p: Path) -> None:
+    cleaned_src = run_dir / "cleaned.md"
+    if not cleaned_src.exists():
+        return
+
+    final_md = _source_final_markdown_path(input_p)
+    final_md.parent.mkdir(parents=True, exist_ok=True)
+    text = cleaned_src.read_text(encoding="utf-8")
+
+    images_src = run_dir / "images"
+    if images_src.exists() and any(p.is_file() for p in images_src.rglob("*")):
+        assets_dir = _source_final_assets_dir(input_p)
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(images_src, assets_dir, dirs_exist_ok=True)
+        asset_rel = os.path.relpath(assets_dir, final_md.parent).replace("\\", "/")
+        text = _rewrite_markdown_image_refs(text, asset_rel)
+
+    final_md.write_text(text, encoding="utf-8")
+
+
+def _source_final_markdown_path(input_p: Path | None) -> Path:
+    if input_p is None:
+        return Path("cleaned.md")
+    stem = _safe_source_stem(input_p)
+    if input_p.suffix.lower() in MARKDOWN_EXTENSIONS:
+        return input_p.with_name(f"{stem}.cleaned.md")
+    return input_p.with_name(f"{stem}.md")
+
+
+def _source_final_assets_dir(input_p: Path | None) -> Path:
+    if input_p is None:
+        return Path("cleaned.assets")
+    return input_p.with_name(f"{_safe_source_stem(input_p)}.assets")
+
+
+def _safe_source_stem(input_p: Path) -> str:
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", input_p.stem).strip(" ._")
+    if not stem:
+        stem = "cleaned"
+    return stem
+
+
+def _rewrite_markdown_image_refs(text: str, asset_rel: str) -> str:
+    return re.sub(
+        r"(!\[[^\]]*\]\()images[/\\]([^)]+)(\))",
+        lambda m: f"{m.group(1)}{asset_rel}/{m.group(2).replace(chr(92), '/')}{m.group(3)}",
+        text,
+    )
+
+
+def _apply_artifact_policy(root_p: Path, current_run_dir: Path, artifact_policy: str) -> None:
+    if artifact_policy == "keep_all":
+        return
+    if artifact_policy not in {"keep_latest", "final_only"}:
+        artifact_policy = "keep_latest"
+
+    runs_dir = root_p / "runs"
+    if not runs_dir.exists():
+        return
+
+    keep_count = 1 if artifact_policy == "final_only" else 3
+    run_dirs = sorted(
+        [p for p in runs_dir.iterdir() if p.is_dir()],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    keep = {current_run_dir.resolve()}
+    for run_dir in run_dirs[:keep_count]:
+        keep.add(run_dir.resolve())
+
+    for run_dir in run_dirs:
+        try:
+            if run_dir.resolve() not in keep:
+                shutil.rmtree(run_dir)
+        except Exception as exc:
+            logger.warning("Failed to prune old run %s: %s", run_dir, exc)
 
 
 def _check_env(profile: str) -> list[str]:

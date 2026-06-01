@@ -6,6 +6,8 @@ Cannot discard protected blocks.
 """
 import json
 import logging
+import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -249,6 +251,7 @@ def _run_output_paths(run_p: Path) -> dict:
 
 def _publish_latest_outputs(run_p: Path, output_root: Path) -> dict:
     output_root.mkdir(parents=True, exist_ok=True)
+    input_path = _input_path_from_latest(output_root)
     for name in [
         "converted.md",
         "diagnosis_report.json",
@@ -267,6 +270,11 @@ def _publish_latest_outputs(run_p: Path, output_root: Path) -> dict:
             shutil.copy2(str(src), str(dst))
         elif name == "review_pack.json" and dst.exists():
             dst.unlink()
+
+    final_md = _source_final_markdown_path(input_path) if input_path else output_root / "cleaned.md"
+    final_assets_dir = _source_final_assets_dir(input_path) if input_path else output_root / "images"
+    if input_path:
+        _publish_direct_final_to_source(run_p, input_path)
 
     src_parts = run_p / "parts"
     dst_parts = output_root / "parts"
@@ -291,6 +299,8 @@ def _publish_latest_outputs(run_p: Path, output_root: Path) -> dict:
         "diagnosis_report": str(output_root / "diagnosis_report.json"),
         "blocks_jsonl": str(output_root / "blocks.jsonl"),
         "cleaned_md": str(output_root / "cleaned.md"),
+        "final_md": str(final_md),
+        "final_assets_dir": str(final_assets_dir),
         "discarded_md": str(output_root / "discarded.md"),
         "review_needed_md": str(output_root / "review_needed.md"),
         "quality_report": str(output_root / "quality_report.json"),
@@ -300,6 +310,64 @@ def _publish_latest_outputs(run_p: Path, output_root: Path) -> dict:
         "images_dir": str(output_root / "images"),
         "review_pack": str(output_root / "review_pack.json"),
     }
+
+
+def _input_path_from_latest(output_root: Path) -> Path | None:
+    latest_path = output_root / "latest.json"
+    if not latest_path.exists():
+        return None
+    try:
+        payload = json.loads(latest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    input_path = payload.get("input_path")
+    return Path(input_path) if input_path else None
+
+
+def _publish_direct_final_to_source(run_p: Path, input_path: Path) -> None:
+    cleaned_src = run_p / "cleaned.md"
+    if not cleaned_src.exists():
+        return
+
+    final_md = _source_final_markdown_path(input_path)
+    final_md.parent.mkdir(parents=True, exist_ok=True)
+    text = cleaned_src.read_text(encoding="utf-8")
+
+    images_src = run_p / "images"
+    if images_src.exists() and any(p.is_file() for p in images_src.rglob("*")):
+        assets_dir = _source_final_assets_dir(input_path)
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(images_src, assets_dir, dirs_exist_ok=True)
+        asset_rel = os.path.relpath(assets_dir, final_md.parent).replace("\\", "/")
+        text = _rewrite_markdown_image_refs(text, asset_rel)
+
+    final_md.write_text(text, encoding="utf-8")
+
+
+def _source_final_markdown_path(input_path: Path) -> Path:
+    stem = _safe_source_stem(input_path)
+    if input_path.suffix.lower() in {".md", ".markdown"}:
+        return input_path.with_name(f"{stem}.cleaned.md")
+    return input_path.with_name(f"{stem}.md")
+
+
+def _source_final_assets_dir(input_path: Path) -> Path:
+    return input_path.with_name(f"{_safe_source_stem(input_path)}.assets")
+
+
+def _safe_source_stem(input_path: Path) -> str:
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", input_path.stem).strip(" ._")
+    if not stem:
+        stem = "cleaned"
+    return stem
+
+
+def _rewrite_markdown_image_refs(text: str, asset_rel: str) -> str:
+    return re.sub(
+        r"(!\[[^\]]*\]\()images[/\\]([^)]+)(\))",
+        lambda m: f"{m.group(1)}{asset_rel}/{m.group(2).replace(chr(92), '/')}{m.group(3)}",
+        text,
+    )
 
 
 def _update_latest_json(
