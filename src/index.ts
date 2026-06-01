@@ -448,6 +448,45 @@ export default defineToolPlugin({
     }),
 
     tool({
+      name: "kbprep_cleanup",
+      label: "KBPrep Cleanup",
+      description:
+        "Clean kbprep intermediate artifacts after a successful conversion. It never deletes the source file or the source-side final Markdown.",
+      parameters: Type.Object({
+        output_root: Type.String({ description: "Absolute path to the kbprep output root to clean." }),
+        action: Type.Optional(
+          Type.Union([Type.Literal("finalize"), Type.Literal("expired"), Type.Literal("all")], {
+            description:
+              "Cleanup action. 'finalize' keeps only source-side deliverables plus a tiny manifest; 'expired' removes old run history; 'all' removes known intermediate artifacts.",
+          })
+        ),
+        older_than_days: Type.Optional(Type.Number({ description: "For action='expired', delete run history older than this many days. Default 7." })),
+        confirm_review_needed: Type.Optional(
+          Type.Boolean({
+            description:
+              "Allow finalize even when review_needed.md still has content. Default false.",
+          })
+        ),
+        dry_run: Type.Optional(Type.Boolean({ description: "Preview what would be deleted without deleting files. Default false." })),
+      }),
+      async execute(params, config, ctx) {
+        const pythonPath = await ensurePythonRuntime(config);
+        return callWorker("cleanup", {
+          output_root: params.output_root,
+          action: params.action ?? "finalize",
+          older_than_days: params.older_than_days ?? 7,
+          confirm_review_needed: params.confirm_review_needed ?? false,
+          dry_run: params.dry_run ?? false,
+        }, {
+          pythonPath,
+          timeoutMs: 120_000,
+          signal: ctx.signal,
+          config: workerConfig(config),
+        });
+      },
+    }),
+
+    tool({
       name: "kbprep_prepare_batch",
       label: "KBPrep Prepare Batch",
       description:

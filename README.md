@@ -46,6 +46,16 @@ For daily use, the source-side final Markdown is the file to move into or keep i
 
 Intermediate audit files remain under `output_root`. By default the plugin uses `artifact_policy="keep_latest"`: the direct-use result is published beside the source, while old `runs/` history is pruned so normal users do not accumulate endless cache-like artifacts. Use `artifact_policy="keep_all"` only when you intentionally want full history for auditing, or `artifact_policy="final_only"` when you want the leanest run history.
 
+When you are satisfied with the result, run:
+
+```text
+kbprep_cleanup(output_root, action="finalize")
+```
+
+Finalize removes the temporary audit/process material under `output_root` (`runs/`, `original/`, `converted.md`, `blocks.jsonl`, `discarded.md`, `review_needed.md`, `quality_report.json`, `parts/`, `images/`, and batch work folders). It keeps the source file, the source-side final Markdown, source-side assets, and a tiny `kbprep_manifest.json` or `kbprep_batch_manifest.json`. If `review_needed.md` still has content, finalize stops unless `confirm_review_needed=true` is passed.
+
+If you are not sure yet, do nothing: `keep_latest` keeps only a short review window by count and age. You can also run `kbprep_cleanup(output_root, action="expired", older_than_days=7)` to remove old run history, or `kbprep_cleanup(output_root, action="all")` to remove known intermediate artifacts without touching source files or source-side final Markdown.
+
 Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when you want an AI or human to review uncertain blocks. Use `mode="ai_review"` only when OpenClaw subagents are available and you accept the extra model call.
 
 ## Tools
@@ -54,6 +64,7 @@ Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when yo
 - `kbprep_analyze`: optional read-only check for file type, PDF subtype, text quality, and route.
 - `kbprep_preflight`: optional runtime check before large PDF/OCR work.
 - `kbprep_apply_review`: optional guarded metadata patch for human/AI review results. It cannot rewrite source text.
+- `kbprep_cleanup`: remove intermediate artifacts after acceptance, or prune expired run history.
 - `kbprep_prepare_batch`: optional directory mode. It is for repeated local files, not platform harvesting.
 
 For audio/video, v1 handles local subtitle, transcript, or ASR text files. It does not automatically download or transcribe binary media.

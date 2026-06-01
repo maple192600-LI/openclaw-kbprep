@@ -657,6 +657,37 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("prunes old run history by age during keep_latest artifact retention", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-retention-age-"));
+    try {
+      runPython(
+        [
+          "import os, time, sys",
+          "from pathlib import Path",
+          "from kbprep_worker.prepare import _apply_artifact_policy",
+          "root = Path(sys.argv[1])",
+          "runs = root / 'runs'",
+          "current = runs / 'current'",
+          "recent = runs / 'recent'",
+          "old = runs / 'old'",
+          "for path in [current, recent, old]:",
+          "    path.mkdir(parents=True, exist_ok=True)",
+          "    (path / 'marker.txt').write_text(path.name, encoding='utf-8')",
+          "now = time.time()",
+          "os.utime(recent, (now - 3600, now - 3600))",
+          "os.utime(old, (now - 10 * 86400, now - 10 * 86400))",
+          "_apply_artifact_policy(root, current, 'keep_latest')",
+          "assert current.exists(), 'current run should remain'",
+          "assert recent.exists(), 'recent run should remain'",
+          "assert not old.exists(), 'old run should be pruned by age'",
+        ].join("\n"),
+        [root],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("excludes image-only evidence from text coverage gates", () => {
     runPython(
       [
@@ -1127,6 +1158,97 @@ describe("kbprep worker pipeline", () => {
       expect(envelope.data.latest_outputs.final_md).toBe(finalPath);
       expect(readFileSync(sourcePath, "utf8")).toBe(original);
       expect(readFileSync(finalPath, "utf8")).toContain("ORIGINAL_MARKDOWN_MARKER");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("finalizes a successful run by deleting intermediate artifacts and keeping only source-side deliverables", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-finalize-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "guide.txt");
+      writeFileSync(sourcePath, ["# Guide", "", "Step 1: keep FINALIZE_MARKER and set threshold=0.8."].join("\n"), "utf8");
+
+      const prepared = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        profile: "tutorial",
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+      const finalPath = path.join(inputDir, "guide.md");
+      expect(existsSync(finalPath)).toBe(true);
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(true);
+      expect(existsSync(path.join(outputRoot, "converted.md"))).toBe(true);
+
+      const cleanup = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+      });
+
+      expect(cleanup.ok).toBe(true);
+      expect(existsSync(sourcePath)).toBe(true);
+      expect(readFileSync(finalPath, "utf8")).toContain("FINALIZE_MARKER");
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "original"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "converted.md"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "cleaned.md"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "discarded.md"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "quality_report.json"))).toBe(false);
+      const manifest = JSON.parse(readFileSync(path.join(outputRoot, "kbprep_manifest.json"), "utf8"));
+      expect(manifest.status).toBe("finalized");
+      expect(manifest.final_md).toBe(finalPath);
+      expect(manifest.source_path).toBe(sourcePath);
+      expect(cleanup.data.deleted.length).toBeGreaterThan(0);
+      expect(prepared.data.latest_outputs.final_md).toBe(finalPath);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses finalize when review-needed content exists unless the user confirms cleanup", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-finalize-review-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "guide.txt");
+      writeFileSync(sourcePath, ["# Guide", "", "Step 1: keep REVIEW_GUARD_MARKER."].join("\n"), "utf8");
+
+      runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        profile: "tutorial",
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+      writeFileSync(path.join(outputRoot, "review_needed.md"), "needs a human look", "utf8");
+
+      const blocked = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+      }, 1);
+
+      expect(blocked.ok).toBe(false);
+      expect(blocked.error.code).toBe("KBPREP_REVIEW_NEEDED");
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(true);
+
+      const confirmed = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+        confirm_review_needed: true,
+      });
+
+      expect(confirmed.ok).toBe(true);
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(false);
+      expect(existsSync(path.join(inputDir, "guide.md"))).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -17,7 +17,9 @@ It does not build indexes, generate final wiki articles, summarize source materi
 2. Run `kbprep_analyze` on the source file.
 3. Run `kbprep_prepare` on one file.
 4. Check `quality_report.json`, `audit.md`, `cleaned.md`, and `discarded.md`.
-5. Use `kbprep_prepare_batch` only after one representative sample passes.
+5. Use the source-side final Markdown beside the source file as the daily result.
+6. Run `kbprep_cleanup(action="finalize")` after the user accepts the result.
+7. Use `kbprep_prepare_batch` only after one representative sample passes.
 
 ## Tools
 
@@ -78,15 +80,27 @@ Forbidden changes:
 - Protected blocks such as operation steps, prompts, code, tables, tool instructions, concrete examples, links, parameters, and numbers.
 - Invalid metadata that would make a block disappear from all rendered outputs.
 
+### `kbprep_cleanup`
+
+Removes intermediate artifacts after the user accepts a result. It must never delete the source file, source-side final Markdown, or source-side assets.
+
+Actions:
+
+- `finalize`: keep only the source-side final Markdown/assets plus a tiny manifest under `output_root`; delete process/audit files such as `runs/`, `original/`, `converted.md`, `blocks.jsonl`, `discarded.md`, `review_needed.md`, `quality_report.json`, `parts/`, `images/`, and batch work folders.
+- `expired`: remove old run history, defaulting to older than 7 days.
+- `all`: remove known intermediate artifacts without checking acceptance state.
+
+If `review_needed.md` still has content, `finalize` should stop unless `confirm_review_needed=true` is explicitly provided.
+
 ### `kbprep_prepare_batch`
 
 Directory processing. It runs one sample first and stops if that sample fails quality gates. This prevents one bad rule or converter choice from damaging a whole batch.
 
-Each source file gets its own output directory under `<batch_output_root>/files/`. Do not read `<batch_output_root>/cleaned.md` after a batch; use `results.json` or each result's `latest_outputs.cleaned_md`.
+Each source file gets its own output directory under `<batch_output_root>/files/`, and each accepted source gets a source-side final Markdown file beside the original source. Do not read `<batch_output_root>/cleaned.md` after a batch; use `results.json`, each result's `batch_final_md`, or each result's `latest_outputs.final_md`.
 
 ## Output
 
-Each successful run writes direct-use files at the top level and keeps the full run history under `runs/<run_id>/`:
+Each successful run writes a source-side final Markdown file next to the source file. This is the file normal users keep. The top-level output files and `runs/<run_id>/` are audit/process material:
 
 ```text
 <output_root>/
@@ -121,6 +135,8 @@ Each successful run writes direct-use files at the top level and keeps the full 
     chunk_manifest.jsonl
     review_pack.json
 ```
+
+After `kbprep_cleanup(action="finalize")`, the source-side final Markdown remains beside the source file and the output root keeps only a small manifest such as `kbprep_manifest.json` or `kbprep_batch_manifest.json`.
 
 For short files, `parts/` may be empty. For long files, parts are cut by headings and natural content boundaries, not by page number. `parts/parts_manifest.json` records `part_id`, `heading_path`, `block_ids`, and `char_count`; reading `part_001.md`, `part_002.md`, ... in manifest order should reconstruct `cleaned.md` after removing frontmatter. Top-level files are updated only after a run has no strict quality errors.
 

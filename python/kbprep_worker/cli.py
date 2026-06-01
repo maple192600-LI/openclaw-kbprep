@@ -4,7 +4,7 @@ CLI entry point for kbprep_worker.
 Usage:
     python -m kbprep_worker.cli <command> --json-stdin
 
-Commands: setup-env, preflight, diagnose, prepare, apply-review
+Commands: setup-env, preflight, diagnose, prepare, apply-review, cleanup
 """
 import json
 import sys
@@ -43,7 +43,8 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(prog="kbprep_worker", description="KBPrep Python worker CLI")
     parser.add_argument("command", choices=[
-        "setup-env", "setup_env", "preflight", "diagnose", "prepare", "apply-review", "apply_review", "prepare-batch", "prepare_batch"
+        "setup-env", "setup_env", "preflight", "diagnose", "prepare", "apply-review", "apply_review",
+        "prepare-batch", "prepare_batch", "cleanup"
     ], help="Command to execute")
     parser.add_argument("--json-stdin", action="store_true", required=True,
                         help="Read JSON input from stdin")
@@ -69,6 +70,7 @@ def main() -> None:
         "apply_review": cmd_apply_review,
         "prepare-batch": cmd_prepare_batch,
         "prepare_batch": cmd_prepare_batch,
+        "cleanup": cmd_cleanup,
     }
 
     handler = dispatch.get(args.command)
@@ -111,6 +113,11 @@ def cmd_apply_review(data: dict) -> None:
 def cmd_prepare_batch(data: dict) -> None:
     from . import prepare_batch as pb
     pb.run(data)
+
+
+def cmd_cleanup(data: dict) -> None:
+    from . import cleanup as cu
+    cu.run(data)
 
 
 if __name__ == "__main__":

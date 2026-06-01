@@ -18,6 +18,7 @@ describe("openclaw-kbprep", () => {
       "kbprep_analyze",
       "kbprep_prepare",
       "kbprep_apply_review",
+      "kbprep_cleanup",
       "kbprep_prepare_batch",
     ]);
   });

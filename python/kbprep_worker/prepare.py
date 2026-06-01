@@ -735,6 +735,8 @@ def _apply_artifact_policy(root_p: Path, current_run_dir: Path, artifact_policy:
         return
 
     keep_count = 1 if artifact_policy == "final_only" else 3
+    max_age_seconds = 7 * 86400
+    now = time.time()
     run_dirs = sorted(
         [p for p in runs_dir.iterdir() if p.is_dir()],
         key=lambda p: p.stat().st_mtime,
@@ -746,7 +748,9 @@ def _apply_artifact_policy(root_p: Path, current_run_dir: Path, artifact_policy:
 
     for run_dir in run_dirs:
         try:
-            if run_dir.resolve() not in keep:
+            is_current = run_dir.resolve() == current_run_dir.resolve()
+            is_expired = (now - run_dir.stat().st_mtime) > max_age_seconds
+            if (run_dir.resolve() not in keep or is_expired) and not is_current:
                 shutil.rmtree(run_dir)
         except Exception as exc:
             logger.warning("Failed to prune old run %s: %s", run_dir, exc)
