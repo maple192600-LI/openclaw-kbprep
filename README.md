@@ -6,6 +6,10 @@ The plugin focuses on preparation only: detect file type, convert as losslessly 
 
 It does not build a RAG index, generate wiki pages, or download from remote platforms.
 
+![KB Prep Tool showcase](docs/showcase-preview.png)
+
+Public showcase page source: [`docs/index.html`](docs/index.html). Enable GitHub Pages from the repository `docs/` folder to publish it as a project page.
+
 ## Use It For One Thing
 
 Give the plugin a local raw file. It produces readable Markdown for a knowledge base.

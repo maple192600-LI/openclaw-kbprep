@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="openclaw-kbprep converts local raw source files into clean, traceable Markdown for Obsidian and LLM Wiki workflows.">
+  <title>KB Prep Tool - OpenClaw 知识库清洗插件</title>
+  <style>
+    :root {
+      --ink: #171410;
+      --muted: #5d574f;
+      --paper: #f7f2e8;
+      --paper-soft: #fffaf0;
+      --line: #d8cbb8;
+      --coal: #20201d;
+      --green: #0f6f5c;
+      --green-soft: #dceee8;
+      --red: #b8422b;
+      --blue: #265d8f;
+      --gold: #c58b2d;
+      --shadow: 0 24px 70px rgba(44, 35, 23, .16);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, "Microsoft YaHei", serif;
+      background:
+        linear-gradient(90deg, rgba(23,20,16,.035) 1px, transparent 1px) 0 0 / 34px 34px,
+        linear-gradient(rgba(23,20,16,.03) 1px, transparent 1px) 0 0 / 34px 34px,
+        radial-gradient(circle at 20% 10%, rgba(197,139,45,.18), transparent 26rem),
+        radial-gradient(circle at 92% 22%, rgba(15,111,92,.14), transparent 28rem),
+        var(--paper);
+      line-height: 1.65;
+    }
+
+    a { color: inherit; }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(32,32,29,.12);
+      background: rgba(247,242,232,.88);
+      backdrop-filter: blur(16px);
+    }
+
+    .nav-inner {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 62px;
+      gap: 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border: 2px solid var(--coal);
+      display: grid;
+      place-items: center;
+      background: var(--green-soft);
+      box-shadow: 4px 4px 0 var(--coal);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+    }
+
+    .nav-links a:hover { border-color: var(--ink); color: var(--ink); }
+
+    .hero {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      min-height: calc(100vh - 62px);
+      display: grid;
+      grid-template-columns: minmax(0, 1.02fr) minmax(360px, .98fr);
+      gap: 44px;
+      align-items: center;
+      padding: 56px 0 44px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--coal);
+      background: var(--paper-soft);
+      padding: 7px 11px;
+      font-size: 13px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      box-shadow: 3px 3px 0 rgba(32,32,29,.24);
+      margin-bottom: 22px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 10ch;
+      font-size: 112px;
+      line-height: .88;
+      letter-spacing: 0;
+      font-weight: 900;
+    }
+
+    .hero p {
+      max-width: 720px;
+      margin: 28px 0 0;
+      color: var(--muted);
+      font-size: 23px;
+      line-height: 1.58;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 34px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      padding: 0 18px;
+      border: 2px solid var(--coal);
+      background: var(--coal);
+      color: var(--paper-soft);
+      text-decoration: none;
+      font-weight: 800;
+      box-shadow: 5px 5px 0 var(--gold);
+      transition: transform .16s ease, box-shadow .16s ease;
+    }
+
+    .button:hover {
+      transform: translate(2px, 2px);
+      box-shadow: 3px 3px 0 var(--gold);
+    }
+
+    .button.secondary {
+      background: var(--paper-soft);
+      color: var(--coal);
+      box-shadow: 5px 5px 0 var(--green);
+    }
+
+    .console-wrap {
+      position: relative;
+      min-height: 560px;
+      perspective: 1000px;
+    }
+
+    .paper-stack {
+      position: absolute;
+      inset: 12px 18px auto auto;
+      width: 78%;
+      height: 480px;
+      border: 2px solid var(--coal);
+      background: #fffdf7;
+      box-shadow: var(--shadow);
+      transform: rotate(2deg);
+      overflow: hidden;
+    }
+
+    .paper-stack::before,
+    .paper-stack::after {
+      content: "";
+      position: absolute;
+      left: 28px;
+      right: 28px;
+      height: 10px;
+      border-top: 2px solid rgba(32,32,29,.24);
+      border-bottom: 2px solid rgba(32,32,29,.12);
+    }
+
+    .paper-stack::before { top: 70px; box-shadow: 0 42px 0 rgba(32,32,29,.12), 0 84px 0 rgba(32,32,29,.12), 0 126px 0 rgba(32,32,29,.12); }
+    .paper-stack::after { top: 250px; box-shadow: 0 42px 0 rgba(32,32,29,.12), 0 84px 0 rgba(32,32,29,.12); }
+
+    .pipeline-card {
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: min(510px, 94%);
+      border: 2px solid var(--coal);
+      background: var(--paper-soft);
+      box-shadow: 12px 12px 0 rgba(32,32,29,.16);
+      transform: rotate(-1.5deg);
+    }
+
+    .terminal-bar {
+      height: 36px;
+      background: var(--coal);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 12px;
+    }
+
+    .light {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--gold);
+    }
+
+    .light:nth-child(2) { background: var(--green); }
+    .light:nth-child(3) { background: var(--red); }
+
+    .pipeline-body {
+      padding: 22px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .flow-row {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 16px;
+      padding: 12px 0;
+      border-bottom: 1px dashed rgba(32,32,29,.25);
+    }
+
+    .flow-row:last-child { border-bottom: 0; }
+    .flow-key { color: var(--green); font-weight: 800; }
+    .flow-value { color: var(--ink); }
+
+    section {
+      border-top: 1px solid rgba(32,32,29,.16);
+      padding: 76px 0;
+    }
+
+    .section-inner {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, .78fr) minmax(260px, .42fr);
+      gap: 32px;
+      align-items: end;
+      margin-bottom: 34px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 62px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .tile {
+      border: 1px solid var(--line);
+      background: rgba(255,250,240,.72);
+      padding: 22px;
+      min-height: 168px;
+      box-shadow: 0 16px 36px rgba(44,35,23,.07);
+    }
+
+    .tile strong {
+      display: block;
+      font-size: 20px;
+      line-height: 1.2;
+      margin-bottom: 10px;
+    }
+
+    .tile p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .wide-band {
+      background: var(--coal);
+      color: var(--paper-soft);
+    }
+
+    .wide-band .section-head p,
+    .wide-band .muted { color: rgba(255,250,240,.72); }
+
+    .process {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .step {
+      min-height: 210px;
+      border: 1px solid rgba(255,250,240,.22);
+      padding: 18px;
+      background: rgba(255,250,240,.06);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .step::after {
+      content: attr(data-index);
+      position: absolute;
+      right: -8px;
+      bottom: -28px;
+      color: rgba(255,250,240,.08);
+      font-size: 96px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .step h3 {
+      margin: 0 0 12px;
+      font-size: 22px;
+    }
+
+    .step p {
+      margin: 0;
+      color: rgba(255,250,240,.72);
+      font-size: 15px;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, .88fr) minmax(320px, .52fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .code-block {
+      margin: 0;
+      border: 2px solid var(--coal);
+      background: #11110f;
+      color: #f8efd9;
+      padding: 22px;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.7;
+      box-shadow: 8px 8px 0 rgba(15,111,92,.22);
+    }
+
+    .check-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .check-list li {
+      border-bottom: 1px solid var(--line);
+      padding: 11px 0;
+      color: var(--muted);
+    }
+
+    .check-list strong { color: var(--ink); }
+
+    .footer {
+      padding: 42px 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 900px) {
+      .nav-links { display: none; }
+      .hero,
+      .section-head,
+      .split {
+        grid-template-columns: 1fr;
+      }
+      .hero { min-height: auto; padding-top: 42px; }
+      .console-wrap { min-height: 500px; }
+      .grid { grid-template-columns: 1fr; }
+      .process { grid-template-columns: 1fr; }
+      h1 { max-width: 12ch; }
+      h1 { font-size: 72px; }
+      h2 { font-size: 42px; }
+      .hero p { font-size: 19px; }
+    }
+
+    @media (max-width: 540px) {
+      .hero-actions { flex-direction: column; }
+      .button { width: 100%; }
+      .paper-stack { width: 88%; right: 0; }
+      .pipeline-card { width: 100%; }
+      .pipeline-body { padding: 16px; font-size: 13px; }
+      .flow-row { grid-template-columns: 76px 1fr; }
+      h1 { font-size: 54px; }
+      h2 { font-size: 34px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <div class="nav-inner">
+      <div class="brand">
+        <span class="brand-mark">KB</span>
+        <span>openclaw-kbprep</span>
+      </div>
+      <nav class="nav-links" aria-label="页面导航">
+        <a href="#formats">格式</a>
+        <a href="#pipeline">流程</a>
+        <a href="#quality">质量</a>
+        <a href="#install">安装</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div>
+        <div class="eyebrow"><span class="dot"></span>OpenClaw plugin · v0.4.3 · local files only</div>
+        <h1 id="hero-title">KB Prep Tool</h1>
+        <p>把本地拿到的 PDF、Office、网页、字幕、笔记、电子书、代码资料，转换成结构清晰、正文细节完整、污染内容可追溯的 Markdown。</p>
+        <div class="hero-actions">
+          <a class="button" href="https://github.com/maple192600-LI/openclaw-kbprep">查看 GitHub</a>
+          <a class="button secondary" href="#install">安装命令</a>
+        </div>
+      </div>
+      <div class="console-wrap" aria-label="插件处理流程示意">
+        <div class="paper-stack"></div>
+        <div class="pipeline-card">
+          <div class="terminal-bar">
+            <span class="light"></span><span class="light"></span><span class="light"></span>
+          </div>
+          <div class="pipeline-body">
+            <div class="flow-row"><span class="flow-key">detect</span><span class="flow-value">PDF / Word / PPT / 字幕 / 网页 / 电子书</span></div>
+            <div class="flow-row"><span class="flow-key">convert</span><span class="flow-value">尽量无损转 Markdown，保留图片和表格</span></div>
+            <div class="flow-row"><span class="flow-key">blockify</span><span class="flow-value">按章节、段落、代码、字幕块切分</span></div>
+            <div class="flow-row"><span class="flow-key">clean</span><span class="flow-value">去广告、二维码、口播废话，不删教程细节</span></div>
+            <div class="flow-row"><span class="flow-key">report</span><span class="flow-value">cleaned.md + discarded.md + quality_report.json</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="formats">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>一件事做深</h2>
+          <p>它不是 RAG，不抓平台内容，不生成最终 wiki。它只负责把已经在本地的原始资料变成干净 Markdown。</p>
+        </div>
+        <div class="grid">
+          <article class="tile">
+            <strong>PDF 智能分流</strong>
+            <p>可信文字层走 PyMuPDF；扫描件、图片型、乱码文字层、MOBI 和旧 Office 走 MinerU/OCR。</p>
+          </article>
+          <article class="tile">
+            <strong>Office / EPUB 轻量转换</strong>
+            <p>DOCX、PPTX、XLSX 和 EPUB 优先本地解析，保留文本、表格、章节顺序和嵌入图片。</p>
+          </article>
+          <article class="tile">
+            <strong>字幕、网页、代码、笔记</strong>
+            <p>字幕去时间戳，HTML 保留链接和图片，代码文件包进 fenced code block，Markdown 保留 Obsidian 结构。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="pipeline" class="wide-band">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>处理流程</h2>
+          <p>长文档不会按页粗暴切开，而是先识别结构，再按块清洗，最后按原顺序拼回。</p>
+        </div>
+        <div class="process">
+          <article class="step" data-index="01">
+            <h3>检测</h3>
+            <p>判断文件格式、PDF 子类型、文字层质量、是否需要 OCR。</p>
+          </article>
+          <article class="step" data-index="02">
+            <h3>转换</h3>
+            <p>输出 `converted.md`，同时复制本地或嵌入图片资源。</p>
+          </article>
+          <article class="step" data-index="03">
+            <h3>切块</h3>
+            <p>按标题、自然段、字幕段、代码块、表格建立 `blocks.jsonl`。</p>
+          </article>
+          <article class="step" data-index="04">
+            <h3>清洗</h3>
+            <p>删除污染内容，保护步骤、参数、Prompt、代码、链接、案例。</p>
+          </article>
+          <article class="step" data-index="05">
+            <h3>验收</h3>
+            <p>生成质量报告；正文细节丢失、CTA 残留、图片缺失都会被拦住。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="quality">
+      <div class="section-inner split">
+        <div>
+          <div class="section-head" style="display:block;margin-bottom:24px">
+            <h2>清洗不等于总结</h2>
+          </div>
+          <ul class="check-list">
+            <li><strong>必须保留：</strong>步骤、工具平台、账号设置、参数、链接、Prompt、代码、表格、案例过程、失败经验。</li>
+            <li><strong>必须清理：</strong>二维码、扫码入群、体验卡、购买引导、无关页眉页脚、重复口播、纯广告图片。</li>
+            <li><strong>不能按关键词误删：</strong>如果“平台、账号、社群、扫码”出现在教程案例或规则说明里，会保留上下文。</li>
+            <li><strong>可追溯：</strong>`discarded.md`、`review_needed.md`、`evidence/marketing_pages.md` 带 block id、页码、章节、原因和置信度。</li>
+          </ul>
+        </div>
+        <pre class="code-block"><code>outputs/
+├─ original/
+├─ converted.md
+├─ blocks.jsonl
+├─ cleaned.md
+├─ discarded.md
+├─ review_needed.md
+├─ images/
+├─ parts/
+└─ quality_report.json
+
+strict gates:
+  operation_step_loss = 0
+  code_block_loss = 0
+  table_loss = 0
+  cta_leak_in_cleaned = 0</code></pre>
+      </div>
+    </section>
+
+    <section id="install" class="wide-band">
+      <div class="section-inner split">
+        <div>
+          <h2>安装到 OpenClaw</h2>
+          <p class="muted">插件首次运行会在自己的目录创建 `.kbprep/venv`，依赖只安装在插件环境里，不污染系统 Python。</p>
+        </div>
+        <pre class="code-block"><code>openclaw plugins install git:github.com/maple192600-LI/openclaw-kbprep
+openclaw gateway restart
+openclaw plugins inspect openclaw-kbprep --runtime --json</code></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="section-inner">
+      <span>KB Prep Tool · Convert local raw files into clean Markdown for Obsidian and LLM Wiki workflows.</span>
+    </div>
+  </footer>
+</body>
+</html>
