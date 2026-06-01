@@ -10,6 +10,14 @@ It does not build a RAG index, generate wiki pages, or download from remote plat
 
 Public showcase page source: [`docs/index.html`](docs/index.html). Enable GitHub Pages from the repository `docs/` folder to publish it as a project page.
 
+For local preview, prefer the HTTP preview instead of opening the Windows `file://` path directly:
+
+```bash
+npm run docs:serve
+```
+
+Then open the printed `http://127.0.0.1:.../` URL. This avoids Windows local path escaping issues in embedded browsers.
+
 ## Use It For One Thing
 
 Give the plugin a local raw file. It produces readable Markdown for a knowledge base.
