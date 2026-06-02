@@ -12,6 +12,33 @@ describe("standalone KBPrep CLI adapter", () => {
     expect(result.output).toContain("--input <file>");
   });
 
+  it("prints help for every standalone command without touching Python setup", async () => {
+    const commands = [
+      ["preflight", "kbprep-preflight"],
+      ["diagnose", "kbprep-analyze"],
+      ["prepare", "kbprep-prepare"],
+      ["apply_review", "kbprep-apply-review"],
+      ["cleanup", "kbprep-cleanup"],
+      ["prepare_batch", "kbprep-batch"],
+    ] as const;
+
+    for (const [command, binName] of commands) {
+      const result = await runStandaloneCli(command, ["--help"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.output).toContain(`Usage: ${binName}`);
+    }
+  });
+
+  it("returns a JSON CLI error when apply-review is missing a patch", async () => {
+    const result = await runStandaloneCli("apply_review", ["--run-dir", ".kbprep/missing-patch"]);
+    const payload = JSON.parse(result.output) as { ok: boolean; error: { code: string; message: string } };
+
+    expect(result.exitCode).toBe(1);
+    expect(payload.ok).toBe(false);
+    expect(payload.error.code).toBe("KBPREP_CLI_ERROR");
+    expect(payload.error.message).toContain("--patch-file or --patch-json is required");
+  });
+
   it("maps analyze CLI options to the Python diagnose worker command", () => {
     const parsed = parseStandaloneArgs(["--input", "README.md"]);
     const plan = buildCliPlan("diagnose", parsed.options);
@@ -42,12 +69,21 @@ describe("standalone KBPrep CLI adapter", () => {
   it("ships standalone bin entries in the npm package manifest", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf-8")) as {
       bin: Record<string, string>;
+      scripts: Record<string, string>;
       peerDependenciesMeta?: Record<string, { optional?: boolean }>;
     };
 
     expect(pkg.bin["kbprep-preflight"]).toBe("./dist/adapters/standalone/bin/preflight.js");
     expect(pkg.bin["kbprep-analyze"]).toBe("./dist/adapters/standalone/bin/analyze.js");
     expect(pkg.bin["kbprep-prepare"]).toBe("./dist/adapters/standalone/bin/prepare.js");
+    expect(pkg.scripts["pack:check"]).toBeDefined();
     expect(pkg.peerDependenciesMeta?.openclaw?.optional).toBe(true);
+  });
+
+  it("keeps the standalone adapter independent from the OpenClaw SDK", () => {
+    const source = readFileSync("src/adapters/standalone/cli.ts", "utf-8");
+
+    expect(source).not.toContain("openclaw/plugin-sdk");
+    expect(source).not.toMatch(/from\s+["']openclaw/);
   });
 });

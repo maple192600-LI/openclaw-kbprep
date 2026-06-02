@@ -157,6 +157,28 @@ EPUB routing is also lightweight. EPUB files are extracted from their spine-orde
 
 For large PDF/PPT-style conversions, set config `mineru_timeout_seconds` when the default 1140 seconds is too short or too long for your machine. If MinerU times out, `prepare` returns `E_TIMEOUT` and keeps `original/`, `diagnosis_report.json`, and `error_report.json` for review.
 
+## Python Worker Direct Use
+
+The Python worker is the core API underneath the Node CLI and OpenClaw adapter. It can be called directly with JSON stdin:
+
+```bash
+PYTHONPATH=python python -m kbprep_worker.cli --help
+printf '{"workspace_path":".kbprep/python-smoke","profile":"lite"}' | PYTHONPATH=python python -m kbprep_worker.cli preflight --json-stdin
+```
+
+Worker commands write one JSON envelope to stdout:
+
+```json
+{
+  "ok": true,
+  "data": {},
+  "metrics": {},
+  "warnings": []
+}
+```
+
+Failures use the same envelope shape with `ok: false`, an `error` object, and optional `warnings`. Host adapters must preserve this contract instead of inventing host-specific result shapes.
+
 ## Build
 
 ```bash

@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  node:
+    name: Node, plugin, and package checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: npm ci
+
+      - name: Install Python worker dependencies
+        run: python -m pip install -e python
+
+      - run: npm run build
+
+      - run: npx tsc -p tsconfig.json --noEmit
+
+      - run: npm test -- --reporter=json --outputFile=.kbprep/vitest-ci-report.json
+
+      - run: npm run plugin:validate
+
+      - run: npm run pack:check
+
+      - name: Standalone CLI smoke
+        env:
+          KBPREP_SKIP_AUTO_SETUP: "1"
+        run: |
+          mkdir -p .kbprep/ci-smoke
+          cat > .kbprep/ci-smoke/sample.md <<'EOF'
+          # Sample
+
+          Step 1: set threshold=0.8 and record retry_count=3.
+
+          Scan the QR code to join the trial group.
+          EOF
+          node dist/adapters/standalone/bin/preflight.js --help
+          node dist/adapters/standalone/bin/analyze.js --input .kbprep/ci-smoke/sample.md --output .kbprep/ci-smoke/analyze
+          node dist/adapters/standalone/bin/prepare.js --input .kbprep/ci-smoke/sample.md --output .kbprep/ci-smoke/prepare --force
+
+      - name: Python worker smoke
+        env:
+          PYTHONPATH: python
+        run: |
+          python -m kbprep_worker.cli --help
+          printf '{"workspace_path":".kbprep/python-ci-smoke","profile":"lite"}' | python -m kbprep_worker.cli preflight --json-stdin
+
+  python-worker:
+    name: Python worker help on ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Python worker import and help smoke
+        env:
+          PYTHONPATH: python
+        run: python -m kbprep_worker.cli --help

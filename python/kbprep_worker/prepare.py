@@ -26,6 +26,12 @@ from urllib.parse import unquote
 
 from . import __version__
 from .envelope import ok, fail
+from .prepare_artifacts import (
+    apply_artifact_policy as _apply_artifact_policy,
+    latest_output_paths as _latest_output_paths,
+    publish_latest_outputs as _publish_latest_outputs,
+)
+from .prepare_errors import write_error_report_from_context as _write_error_report_from_context
 from .supported_formats import (
     CODE_EXTENSIONS,
     CODE_LANGUAGE_BY_EXTENSION,
@@ -511,34 +517,6 @@ def run(data: dict) -> None:
     }, warnings=warnings)
 
 
-def _latest_output_paths(root_p: Path, input_p: Path | None = None, profile: str = "standard") -> dict:
-    """Return stable top-level paths for the latest successful run."""
-    source_side_final = profile != "curated_obsidian_kb"
-    final_md = (_source_final_markdown_path(input_p) if input_p else root_p / "cleaned.md") if source_side_final else None
-    final_assets_dir = (_source_final_assets_dir(input_p) if input_p else root_p / "images") if source_side_final else None
-    obsidian_dir = root_p / "obsidian"
-    obsidian_index = obsidian_dir / "00-索引.md"
-    review_pack = root_p / "review_pack.json"
-    return {
-        "converted_md": str(root_p / "converted.md"),
-        "diagnosis_report": str(root_p / "diagnosis_report.json"),
-        "blocks_jsonl": str(root_p / "blocks.jsonl"),
-        "cleaned_md": str(root_p / "cleaned.md"),
-        "final_md": str(final_md) if final_md else None,
-        "final_assets_dir": str(final_assets_dir) if final_assets_dir else None,
-        "discarded_md": str(root_p / "discarded.md"),
-        "review_needed_md": str(root_p / "review_needed.md"),
-        "quality_report": str(root_p / "quality_report.json"),
-        "conversion_report": str(root_p / "conversion_report.json"),
-        "audit_md": str(root_p / "audit.md"),
-        "parts_dir": str(root_p / "parts"),
-        "images_dir": str(root_p / "images"),
-        "obsidian_dir": str(obsidian_dir) if obsidian_dir.exists() else None,
-        "obsidian_index": str(obsidian_index) if obsidian_index.exists() else None,
-        "review_pack": str(review_pack) if review_pack.exists() else None,
-    }
-
-
 def _write_diagnosis_report(
     run_dir: Path,
     input_path: Path,
@@ -596,111 +574,6 @@ def _diagnosis_fallback(input_path: Path) -> dict:
     }
 
 
-def _write_error_report_from_context(
-    context: dict,
-    code: str,
-    message: str,
-    warnings: list[str],
-    traceback_text: str | None = None,
-) -> dict:
-    """Persist failure evidence when a run directory already exists."""
-    run_dir = context.get("run_dir")
-    if not isinstance(run_dir, Path):
-        return {}
-
-    input_p = context.get("input_p")
-    root_p = context.get("root_p")
-    original_file = context.get("original_file")
-    report = {
-        "schema": "kbprep.error_report.v1",
-        "code": code,
-        "message": message,
-        "input_path": str(input_p) if isinstance(input_p, Path) else None,
-        "output_root": str(root_p) if isinstance(root_p, Path) else None,
-        "run_dir": str(run_dir),
-        "original_file": str(original_file) if isinstance(original_file, Path) and original_file.exists() else None,
-        "source_sha256": context.get("file_hash", ""),
-        "source_type": context.get("source_type", "unknown"),
-        "plugin_version": context.get("plugin_version", "unknown"),
-        "mineru_version": context.get("mineru_version", "unknown"),
-        "runtime": context.get("runtime", {}),
-        "diagnosis": context.get("diagnosis", {}),
-        "warnings": warnings,
-    }
-    if traceback_text:
-        report["traceback_tail"] = traceback_text.splitlines()[-40:]
-
-    try:
-        run_dir.mkdir(parents=True, exist_ok=True)
-        error_report = run_dir / "error_report.json"
-        error_report.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-        return {
-            "run_dir": str(run_dir),
-            "original_file": report["original_file"],
-            "error_report": str(error_report),
-            "runtime": report["runtime"],
-            "diagnosis": report["diagnosis"],
-        }
-    except Exception as report_error:
-        return {
-            "run_dir": str(run_dir),
-            "error_report_error": str(report_error),
-        }
-
-
-def _publish_latest_outputs(run_dir: Path, root_p: Path, input_p: Path, profile: str = "standard") -> dict:
-    """Copy successful run artifacts to output_root for direct reading."""
-    root_p.mkdir(parents=True, exist_ok=True)
-    for name in [
-        "converted.md",
-        "diagnosis_report.json",
-        "blocks.jsonl",
-        "cleaned.md",
-        "discarded.md",
-        "review_needed.md",
-        "quality_report.json",
-        "conversion_report.json",
-        "audit.md",
-        "review_pack.json",
-    ]:
-        src = run_dir / name
-        dst = root_p / name
-        if src.exists():
-            shutil.copy2(str(src), str(dst))
-        elif dst.exists() and name == "review_pack.json":
-            dst.unlink()
-
-    if profile != "curated_obsidian_kb":
-        _publish_direct_final_to_source(run_dir, input_p)
-
-    src_parts = run_dir / "parts"
-    dst_parts = root_p / "parts"
-    if dst_parts.exists():
-        shutil.rmtree(dst_parts)
-    if src_parts.exists():
-        shutil.copytree(src_parts, dst_parts)
-    else:
-        dst_parts.mkdir(parents=True, exist_ok=True)
-
-    src_images = run_dir / "images"
-    dst_images = root_p / "images"
-    if dst_images.exists():
-        shutil.rmtree(dst_images)
-    if src_images.exists():
-        shutil.copytree(src_images, dst_images)
-    else:
-        dst_images.mkdir(parents=True, exist_ok=True)
-
-    src_obsidian = run_dir / "obsidian"
-    dst_obsidian = root_p / "obsidian"
-    if dst_obsidian.exists():
-        shutil.rmtree(dst_obsidian)
-    if src_obsidian.exists():
-        shutil.copytree(src_obsidian, dst_obsidian)
-
-    return _latest_output_paths(root_p, input_p, profile)
-
-
 def _source_title_for_render(input_p: Path, converted_path: Path) -> str:
     if input_p.suffix.lower() in HTML_EXTENSIONS and converted_path.exists():
         try:
@@ -711,88 +584,6 @@ def _source_title_for_render(input_p: Path, converted_path: Path) -> str:
         except Exception:
             pass
     return input_p.stem
-
-
-def _publish_direct_final_to_source(run_dir: Path, input_p: Path) -> None:
-    cleaned_src = run_dir / "cleaned.md"
-    if not cleaned_src.exists():
-        return
-
-    final_md = _source_final_markdown_path(input_p)
-    final_md.parent.mkdir(parents=True, exist_ok=True)
-    text = cleaned_src.read_text(encoding="utf-8")
-
-    images_src = run_dir / "images"
-    if images_src.exists() and any(p.is_file() for p in images_src.rglob("*")):
-        assets_dir = _source_final_assets_dir(input_p)
-        assets_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(images_src, assets_dir, dirs_exist_ok=True)
-        asset_rel = os.path.relpath(assets_dir, final_md.parent).replace("\\", "/")
-        text = _rewrite_markdown_image_refs(text, asset_rel)
-
-    final_md.write_text(text, encoding="utf-8")
-
-
-def _source_final_markdown_path(input_p: Path | None) -> Path:
-    if input_p is None:
-        return Path("cleaned.md")
-    stem = _safe_source_stem(input_p)
-    if input_p.suffix.lower() in MARKDOWN_EXTENSIONS:
-        return input_p.with_name(f"{stem}.cleaned.md")
-    return input_p.with_name(f"{stem}.md")
-
-
-def _source_final_assets_dir(input_p: Path | None) -> Path:
-    if input_p is None:
-        return Path("cleaned.assets")
-    return input_p.with_name(f"{_safe_source_stem(input_p)}.assets")
-
-
-def _safe_source_stem(input_p: Path) -> str:
-    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", input_p.stem).strip(" ._")
-    if not stem:
-        stem = "cleaned"
-    return stem
-
-
-def _rewrite_markdown_image_refs(text: str, asset_rel: str) -> str:
-    return re.sub(
-        r"(!\[[^\]]*\]\()images[/\\]([^)]+)(\))",
-        lambda m: f"{m.group(1)}{asset_rel}/{m.group(2).replace(chr(92), '/')}{m.group(3)}",
-        text,
-    )
-
-
-def _apply_artifact_policy(root_p: Path, current_run_dir: Path, artifact_policy: str) -> None:
-    if artifact_policy == "keep_all":
-        return
-    if artifact_policy not in {"keep_latest", "final_only"}:
-        artifact_policy = "keep_latest"
-
-    runs_dir = root_p / "runs"
-    if not runs_dir.exists():
-        return
-
-    keep_count = 1 if artifact_policy == "final_only" else 3
-    max_age_seconds = 7 * 86400
-    now = time.time()
-    run_dirs = sorted(
-        [p for p in runs_dir.iterdir() if p.is_dir()],
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    keep = {current_run_dir.resolve()}
-    for run_dir in run_dirs[:keep_count]:
-        keep.add(run_dir.resolve())
-
-    for run_dir in run_dirs:
-        try:
-            is_current = run_dir.resolve() == current_run_dir.resolve()
-            is_expired = (now - run_dir.stat().st_mtime) > max_age_seconds
-            if (run_dir.resolve() not in keep or is_expired) and not is_current:
-                shutil.rmtree(run_dir)
-        except Exception as exc:
-            logger.warning("Failed to prune old run %s: %s", run_dir, exc)
 
 
 def _check_env(profile: str) -> list[str]:
