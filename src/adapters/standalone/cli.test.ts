@@ -39,6 +39,21 @@ describe("standalone KBPrep CLI adapter", () => {
     expect(payload.error.message).toContain("--patch-file or --patch-json is required");
   });
 
+  it("returns a JSON CLI error for invalid boolean options instead of silently using defaults", async () => {
+    const result = await runStandaloneCli("cleanup", [
+      "--output",
+      ".kbprep/cleanup",
+      "--dry-run",
+      "maybe",
+    ]);
+    const payload = JSON.parse(result.output) as { ok: boolean; error: { code: string; message: string } };
+
+    expect(result.exitCode).toBe(1);
+    expect(payload.ok).toBe(false);
+    expect(payload.error.code).toBe("KBPREP_CLI_ERROR");
+    expect(payload.error.message).toContain("--dry-run must be true or false");
+  });
+
   it("maps analyze CLI options to the Python diagnose worker command", () => {
     const parsed = parseStandaloneArgs(["--input", "README.md"]);
     const plan = buildCliPlan("diagnose", parsed.options);
@@ -64,6 +79,58 @@ describe("standalone KBPrep CLI adapter", () => {
     expect(plan.input.mode).toBe("rules_only");
     expect(plan.input.force).toBe(true);
     expect(plan.input.artifact_policy).toBe("keep_latest");
+  });
+
+  it("maps cleanup dry-run options to the Python cleanup worker command", () => {
+    const parsed = parseStandaloneArgs([
+      "--output",
+      ".kbprep/cleanup",
+      "--action",
+      "expired",
+      "--older-than-days",
+      "30",
+      "--dry-run",
+    ]);
+    const plan = buildCliPlan("cleanup", parsed.options);
+
+    expect(plan.command).toBe("cleanup");
+    expect(plan.input.output_root).toContain(join(".kbprep", "cleanup"));
+    expect(plan.input.action).toBe("expired");
+    expect(plan.input.older_than_days).toBe(30);
+    expect(plan.input.dry_run).toBe(true);
+  });
+
+  it("defaults cleanup dry-run to all-artifact preview without weakening finalize cleanup", () => {
+    const parsed = parseStandaloneArgs([
+      "--output",
+      ".kbprep/cleanup",
+      "--dry-run",
+    ]);
+    const plan = buildCliPlan("cleanup", parsed.options);
+
+    expect(plan.command).toBe("cleanup");
+    expect(plan.input.action).toBe("all");
+    expect(plan.input.dry_run).toBe(true);
+  });
+
+  it("maps batch options to the Python prepare_batch worker command", () => {
+    const parsed = parseStandaloneArgs([
+      "--input",
+      "docs",
+      "--output",
+      ".kbprep/batch",
+      "--convert-jobs",
+      "2",
+      "--force",
+    ]);
+    const plan = buildCliPlan("prepare_batch", parsed.options);
+
+    expect(plan.command).toBe("prepare_batch");
+    expect(plan.input.input_dir).toContain("docs");
+    expect(plan.input.output_root).toContain(join(".kbprep", "batch"));
+    expect(plan.input.convert_jobs).toBe(2);
+    expect(plan.input.force).toBe(true);
+    expect(plan.input.profile).toBe("curated_obsidian_kb");
   });
 
   it("ships standalone bin entries in the npm package manifest", () => {
