@@ -1,4 +1,4 @@
-"""Post-install hardware detection and plugin-local runtime tuning."""
+"""Post-install hardware detection and KBPrep-local runtime tuning."""
 
 from __future__ import annotations
 
@@ -87,7 +87,7 @@ def detect_device(python: str | None = None) -> str:
 
 
 def setup_gpu(venv_python: str | None = None, device_override: str | None = None) -> dict:
-    """Detect hardware and install CUDA torch into the plugin venv when appropriate."""
+    """Detect hardware and install CUDA torch into the KBPrep venv when appropriate."""
     python = venv_python or sys.executable
     torch_probe = probe_torch(python)
     result = {

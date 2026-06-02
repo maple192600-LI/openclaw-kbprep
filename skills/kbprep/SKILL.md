@@ -50,7 +50,7 @@ Read-only diagnosis. It detects:
 
 Single-file conversion and cleaning pipeline.
 
-For converter-backed formats such as PDF, Word, PPT, Excel, EPUB, and images, the plugin first preserves the original file, then validates obvious container problems before invoking the heavy converter. A corrupted or mislabeled `.docx`, `.pptx`, `.xlsx`, or `.epub` fails with `E_CONVERT_INPUT_INVALID` and must not publish `cleaned.md` or `latest.json`.
+For converter-backed formats such as PDF, Word, PPT, Excel, EPUB, and images, KBPrep first preserves the original file, then validates obvious container problems before invoking the heavy converter. A corrupted or mislabeled `.docx`, `.pptx`, `.xlsx`, or `.epub` fails with `E_CONVERT_INPUT_INVALID` and must not publish `cleaned.md` or `latest.json`.
 
 For saved HTML, Markdown notes, modern Office XML, and EPUB sources, image references are not treated as disposable decoration. Local or embedded image assets should be copied into `images/` and the Markdown should point at those portable paths. Links in HTML/EPUB should remain Markdown links.
 

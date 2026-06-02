@@ -6,13 +6,13 @@ KBPrep is a source-to-clean-Markdown project. OpenClaw is a supported adapter an
 
 ```text
 KBPrep
-├─ python/kbprep_worker/        core conversion, cleaning, quality gates
-├─ src/runtime/                 Node runtime setup for the Python worker
-├─ src/worker.ts                JSON stdin/stdout worker bridge
-├─ src/adapters/openclaw/       OpenClaw tool registration
-├─ src/adapters/standalone/     standalone CLI argument adapter
-├─ skills/kbprep/               agent usage guide
-└─ docs/                        architecture and operating notes
++-- python/kbprep_worker/        core conversion, cleaning, quality gates
++-- src/runtime/                 Node runtime setup for the Python worker
++-- src/worker.ts                JSON stdin/stdout worker bridge
++-- src/adapters/openclaw/       OpenClaw tool registration
++-- src/adapters/standalone/     standalone CLI argument adapter
++-- skills/kbprep/               agent usage guide
++-- docs/                        architecture and operating notes
 ```
 
 The root `src/index.ts` is intentionally only a compatibility shim for OpenClaw's existing `dist/index.js` extension entry.

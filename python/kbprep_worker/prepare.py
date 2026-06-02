@@ -397,7 +397,7 @@ def run(data: dict) -> None:
         _stderr_log("error", "pipeline", str(e), "E_MINERU_NOT_FOUND")
         details = _write_error_report_from_context(locals(), "E_MINERU_NOT_FOUND", str(e), warnings)
         fail("E_MINERU_NOT_FOUND", f"MinerU not found: {e}", details=details, warnings=warnings, recoverable=False,
-             suggested_action="Rebuild the plugin-local .kbprep/venv so MinerU is installed there.")
+             suggested_action="Rebuild the KBPrep-local .kbprep/venv so MinerU is installed there.")
         return
     except TimeoutError as e:
         _stderr_log("error", "pipeline", str(e), "E_TIMEOUT")
@@ -409,7 +409,7 @@ def run(data: dict) -> None:
             details=details,
             warnings=warnings,
             recoverable=True,
-            suggested_action="Increase plugin config mineru_timeout_seconds, try a smaller sample first, or verify MinerU/GPU readiness with kbprep_preflight.",
+            suggested_action="Increase config mineru_timeout_seconds, try a smaller sample first, or verify MinerU/GPU readiness with kbprep_preflight.",
         )
         return
     except Exception as e:

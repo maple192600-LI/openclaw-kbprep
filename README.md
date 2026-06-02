@@ -22,7 +22,7 @@ Then open the printed `http://127.0.0.1:.../` URL. This avoids Windows local pat
 
 ## Use It For One Thing
 
-Give the plugin a local raw file. It produces readable Markdown for a knowledge base.
+Give KBPrep a local raw file. It produces readable Markdown for a knowledge base.
 
 Default entry:
 
@@ -69,11 +69,11 @@ kbprep_prepare(input_path, output_root, profile="curated_obsidian_kb")
 
 The profile does not summarize or rewrite source body paragraphs. It may sanitize generated note titles and heading display text by removing author/name prefixes, but source knowledge paragraphs are either kept, removed into audit files, or marked for review.
 
-For daily use, the source-side final Markdown is the file to move into or keep in your knowledge base. For example, `OpenClaw橙皮书.pdf` publishes `OpenClaw橙皮书.md` beside the source file. If the source itself is already Markdown, the plugin publishes `name.cleaned.md` instead of overwriting the original note. Image assets for that final file are copied beside the source as `name.assets/`.
+For daily use, the source-side final Markdown is the file to move into or keep in your knowledge base. For example, `OpenClaw橙皮书.pdf` publishes `OpenClaw橙皮书.md` beside the source file. If the source itself is already Markdown, KBPrep publishes `name.cleaned.md` instead of overwriting the original note. Image assets for that final file are copied beside the source as `name.assets/`.
 
 `discarded.md`, `review_needed.md`, and `evidence/marketing_pages.md` include compact trace comments before each block: block id, type, page range when available, heading path, risk tags, confidence, and reason. The text itself is kept verbatim so a human can recover or audit anything that was removed from `cleaned.md`.
 
-Intermediate audit files remain under `output_root`. By default the plugin uses `artifact_policy="keep_latest"`: the direct-use result is published beside the source, while old `runs/` history is pruned so normal users do not accumulate endless cache-like artifacts. Use `artifact_policy="keep_all"` only when you intentionally want full history for auditing, or `artifact_policy="final_only"` when you want the leanest run history.
+Intermediate audit files remain under `output_root`. By default KBPrep uses `artifact_policy="keep_latest"`: the direct-use result is published beside the source, while old `runs/` history is pruned so normal users do not accumulate endless cache-like artifacts. Use `artifact_policy="keep_all"` only when you intentionally want full history for auditing, or `artifact_policy="final_only"` when you want the leanest run history.
 
 When you are satisfied with the result, run:
 
@@ -119,7 +119,7 @@ The worker is also isolated from user-site packages (`PYTHONNOUSERSITE=1`), and 
 When an NVIDIA driver is detected and the KBPrep-local torch is CPU-only, setup installs pinned CUDA wheels (`torch==2.8.0`, `torchvision==0.23.0`, cu126 index) into `.kbprep/venv` and then re-checks torch in a fresh Python process. Set config `device_override="cpu"` to skip CUDA wheel installation.
 The worker dependency set pins MinerU `3.2.1` and PyMuPDF `1.27.2.3`. PyMuPDF powers the fast trusted PDF text-layer route; MinerU/OCR is used when diagnosis says the text layer is missing or unsafe.
 The setup result is written to `.kbprep/runtime-ready.json` so the selected Python path, CUDA action, and detected torch state are traceable.
-The ready marker includes the plugin version, selected Python path, worker dependency spec, and `device_override`. If any of those no longer match, the plugin deletes only its own `.kbprep/venv` and marker, then rebuilds the runtime instead of reusing a stale or wrong environment.
+The ready marker includes the KBPrep version, selected Python path, worker dependency spec, and `device_override`. If any of those no longer match, KBPrep deletes only its own `.kbprep/venv` and marker, then rebuilds the runtime instead of reusing a stale or wrong environment.
 
 Run `kbprep_preflight` before heavy PDF/Office conversion and check:
 
@@ -155,7 +155,7 @@ Modern Office XML files are converted locally when heavy conversion is unnecessa
 
 EPUB routing is also lightweight. EPUB files are extracted from their spine-ordered XHTML/HTML chapters into Markdown with headings, lists, links, images, paragraphs, and table-like text preserved. Embedded EPUB images are copied into `images/epub/...`; MOBI remains on the heavy conversion route.
 
-For large PDF/PPT-style conversions, set plugin config `mineru_timeout_seconds` when the default 1140 seconds is too short or too long for your machine. If MinerU times out, `prepare` returns `E_TIMEOUT` and keeps `original/`, `diagnosis_report.json`, and `error_report.json` for review.
+For large PDF/PPT-style conversions, set config `mineru_timeout_seconds` when the default 1140 seconds is too short or too long for your machine. If MinerU times out, `prepare` returns `E_TIMEOUT` and keeps `original/`, `diagnosis_report.json`, and `error_report.json` for review.
 
 ## Build
 
@@ -193,7 +193,7 @@ openclaw plugins inspect openclaw-kbprep --runtime --json
 
 - `status: "loaded"`
 - `shape: "non-capability"`
-- `toolNames`: `kbprep_preflight`, `kbprep_analyze`, `kbprep_prepare`, `kbprep_apply_review`, `kbprep_prepare_batch`
+- `toolNames`: `kbprep_preflight`, `kbprep_analyze`, `kbprep_prepare`, `kbprep_apply_review`, `kbprep_cleanup`, `kbprep_prepare_batch`
 - `configSchema: true`
 
 After install, config, or code changes, restart the Gateway before testing the plugin from chat or channels.

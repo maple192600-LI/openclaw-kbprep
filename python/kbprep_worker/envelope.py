@@ -1,7 +1,7 @@
 """
 JSON envelope helpers for stdout communication with TypeScript layer.
 
-The OpenClaw plugin runs the worker as short-lived CLI subprocesses.
+Node adapters run the worker as short-lived CLI subprocesses.
 Each command writes one JSON envelope to stdout and exits.
 """
 import json

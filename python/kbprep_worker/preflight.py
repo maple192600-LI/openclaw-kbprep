@@ -1,5 +1,5 @@
 """
-preflight - check plugin-local Python, MinerU availability, GPU/CUDA, and workspace permissions.
+preflight - check KBPrep-local Python, MinerU availability, GPU/CUDA, and workspace permissions.
 """
 
 import shutil
@@ -51,8 +51,8 @@ def run(data: dict) -> None:
     except FileNotFoundError:
         errors.append(
             "MinerU not found for the selected Python environment. "
-            "Run kbprep_preflight again after the plugin-local .kbprep/venv setup finishes, "
-            "or reinstall the plugin if the environment is incomplete."
+            "Run kbprep_preflight again after the KBPrep-local .kbprep/venv setup finishes, "
+            "or reinstall KBPrep if the environment is incomplete."
         )
 
     try:
@@ -80,7 +80,7 @@ def run(data: dict) -> None:
                 versions["nvidia_smi_path"] = nvidia_smi
                 warnings.append(
                     "NVIDIA GPU detected but torch is CPU-only. "
-                    "The plugin setup step will try to install CUDA torch inside its own .kbprep/venv only."
+                    "The KBPrep setup step will try to install CUDA torch inside its own .kbprep/venv only."
                 )
     except ImportError:
         versions["torch"] = "not installed"
