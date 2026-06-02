@@ -41,6 +41,8 @@ jobs:
 
       - run: npm run build
 
+      - run: git diff --exit-code -- dist
+
       - run: npx tsc -p tsconfig.json --noEmit
 
       - run: npx vitest run --pool=forks --maxWorkers=1 --testTimeout=30000 --reporter=default --reporter=json --outputFile.json=.kbprep/vitest-ci-report.json

@@ -1130,6 +1130,45 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("keeps short policy-analysis paragraphs that mention public account CTA terms", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-cta-policy-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "policy.md");
+      writeFileSync(
+        sourcePath,
+        [
+          "# 平台规则分析",
+          "",
+          "平台规则：不得诱导关注公众号，这类文案要作为违规案例记录。",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        profile: "standard",
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+
+      const runDir = envelope.data.run_dir;
+      const cleaned = readFileSync(path.join(runDir, "cleaned.md"), "utf8");
+      const discarded = readFileSync(path.join(runDir, "discarded.md"), "utf8");
+
+      expect(envelope.ok).toBe(true);
+      expect(cleaned).toContain("不得诱导关注公众号");
+      expect(discarded).not.toContain("不得诱导关注公众号");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("cleans real Chinese CTA while preserving tutorial context", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-real-zh-"));
     try {
@@ -1379,8 +1418,10 @@ describe("kbprep worker pipeline", () => {
 
       const converted = readFileSync(path.join(envelope.data.run_dir, "converted.md"), "utf8");
       const svgText = readFileSync(path.join(outputRoot, "images", "Diagram-Test-diagram-01.svg"), "utf8");
+      const quality = JSON.parse(readFileSync(path.join(envelope.data.run_dir, "quality_report.json"), "utf8"));
       expect(envelope.data.strict_errors).toEqual([]);
       expect(converted).toContain("![Workflow diagram](images/Diagram-Test-diagram-01.svg)");
+      expect(quality.image_retention.invalid_svg_count).toBe(0);
       expect(svgText).toContain('viewBox="0 0 680 480"');
       expect(svgText).toContain('width="680"');
       expect(svgText).toContain('height="480"');

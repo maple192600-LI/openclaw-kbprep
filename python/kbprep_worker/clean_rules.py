@@ -20,33 +20,27 @@ PROMOTIONAL_LINE_RE = re.compile(
 )
 
 # ── CTA keywords that might appear in educational content ─────────
-CONTEXTUAL_CTA_KEYWORDS = [
+CONTEXTUAL_CTA_KEYWORDS = (
     "扫码", "二维码", "扫一扫", "长按识别", "微信号", "加微信",
     "添加微信", "添加好友", "公众号", "入群", "进群", "加群",
     "领取福利", "免费领取", "体验卡", "立即购买", "限时优惠",
-    "扫码", "二维码", "扫一扫", "长按识别", "微信号", "加微信",
-    "添加微信", "添加好友", "公众号", "入群", "进群", "加群",
-    "领取福利", "免费领取", "体验卡", "立即购买", "限时优惠",
-]
+)
 
 # ── Tutorial/educational indicators ───────────────────────────────
-TUTORIAL_INDICATORS = [
-    # Real Chinese
+TUTORIAL_INDICATORS = (
     "教程", "步骤", "操作", "设置", "配置", "如何", "怎么",
     "方法", "流程", "指南", "实操", "案例", "实战", "手把手",
     "底层逻辑", "原理", "机制", "方法论", "策略", "思路", "心法",
     "认知", "框架", "模型", "体系", "系统", "全面", "深入",
     "入门", "进阶", "基础", "核心", "关键", "本质",
-    # Direct tutorial words
-    "教程", "步骤", "操作", "设置", "配置", "如何", "怎么",
-    "方法", "流程", "指南", "实操", "案例", "实战", "手把手",
-    # Educational/analytical words
-    "底层逻辑", "原理", "机制", "方法论", "策略", "思路", "心法",
-    "认知", "框架", "模型", "体系", "系统", "全面", "深入",
-    "入门", "进阶", "基础", "核心", "关键", "本质",
-    # English
     "tutorial", "step", "guide", "how to", "setup", "workflow",
-]
+)
+
+CONTEXTUAL_KNOWLEDGE_TERMS = (
+    "案例", "复盘", "平台规则", "违规", "违规案例", "判断标准",
+    "处理方式", "处理动作", "字段", "参数", "不要", "不得",
+    "不能", "保留完整上下文", "如果", "当", "出现", "限制条件",
+)
 
 # Step pattern: "1. xxx" or "1) xxx"
 STEP_RE = re.compile(
@@ -159,11 +153,7 @@ def _is_promotional_line(line: str) -> bool:
 
 
 def _is_contextual_promo_knowledge(line: str) -> bool:
-    return any(term in line for term in [
-        "案例", "复盘", "平台规则", "违规", "判断标准", "处理方式",
-        "处理动作", "字段", "参数", "不要", "不能", "保留完整上下文",
-        "如果", "当", "出现",
-    ])
+    return any(term in line for term in CONTEXTUAL_KNOWLEDGE_TERMS)
 
 
 def _has_cta_keywords(text: str) -> bool:
@@ -191,6 +181,9 @@ def _is_tutorial_context(text: str, block: dict) -> bool:
     if "```" in text or "$ " in text:
         return True
 
+    if any(term in text for term in CONTEXTUAL_KNOWLEDGE_TERMS):
+        return True
+
     # Check text length: CTAs are typically short (<200 chars),
     # educational content is longer
     if len(text) > 200:
@@ -200,7 +193,6 @@ def _is_tutorial_context(text: str, block: dict) -> bool:
     text_lower = text.lower()
     if any(ind in text_lower for ind in [
         "逻辑", "原理", "机制", "策略", "思路", "本质",
-        "平台规则", "违规案例", "不要", "判断标准", "限制条件",
     ]):
         return True
 

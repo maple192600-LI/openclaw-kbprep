@@ -2,6 +2,8 @@
 
 KBPrep is a source-to-clean-Markdown project. OpenClaw is a supported adapter and installation route, but the core conversion, cleaning, quality gates, and curated Obsidian output live in the Python worker.
 
+The npm package is named `kbprep`. The `openclaw-kbprep` id remains the OpenClaw adapter/plugin id and the current GitHub repository slug; renaming the remote repository is an external GitHub operation, not a source-code refactor.
+
 ## Current Architecture
 
 ```text
@@ -41,7 +43,7 @@ This branch reimplements the useful direction from the clean `main` baseline ins
 
 ## Non-Goals For This Step
 
-- Do not rename the GitHub repository yet.
+- Do not rename the GitHub repository from code. If the repository slug changes later, update install URLs and GitHub Pages links in the same release.
 - Do not move the local checkout yet.
 - Do not make MCP the top-level architecture unless a real host needs it.
-- Do not add Codex or Claude Code AI review backends until `local_rules`, standalone CLI, and OpenClaw paths are stable.
+- Do not add concrete Codex or Claude Code provider adapters until the standalone CLI and OpenClaw paths are stable. The source-level AI review backend interface is allowed so hosts can plug in their own reviewer without changing classification safety rules.

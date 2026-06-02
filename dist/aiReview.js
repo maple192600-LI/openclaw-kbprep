@@ -12,12 +12,12 @@ export async function maybeRunAiReview(result, params, config, context, opts) {
     if (!result.ok && result.error?.code !== "E_QA_FAILED") {
         return result;
     }
-    const subagent = context.api.runtime?.subagent;
+    const backend = resolveAiReviewBackend(context);
     const sourceData = (result.ok ? result.data : result.error?.details);
     const sourceOutputs = sourceData?.outputs ?? {};
     const runDir = String(sourceData?.run_dir ?? "");
     const reviewPackPath = String(sourceOutputs.review_pack ?? "");
-    if (!subagent || !runDir || !reviewPackPath) {
+    if (!backend || !runDir || !reviewPackPath) {
         return withAiWarning(result, "W_LLM_REVIEW_SKIPPED: AI review unavailable or review_pack missing.");
     }
     let reviewPack = "";
@@ -39,24 +39,18 @@ export async function maybeRunAiReview(result, params, config, context, opts) {
         for (let attempt = 1; attempt <= AI_REVIEW_MAX_ATTEMPTS; attempt += 1) {
             const sessionKey = `kbprep-review:${context.toolCallId}:${Date.now()}:${index + 1}:${attempt}`;
             const message = buildReviewPrompt(batch, index + 1, batches.length, attempt);
-            const run = await subagent.run({
+            const reviewed = await backend.review({
                 sessionKey,
                 message,
                 provider: params.ai_review_provider ?? config.ai_review_provider,
                 model: params.ai_review_model ?? config.ai_review_model,
-                extraSystemPrompt: AI_REVIEW_SYSTEM_PROMPT,
-                lane: "kbprep-review",
-                lightContext: true,
-                deliver: false,
+                systemPrompt: AI_REVIEW_SYSTEM_PROMPT,
+                timeoutMs: opts.timeoutMs,
                 idempotencyKey: `${context.toolCallId}:${index + 1}:${attempt}`,
             });
-            const waited = await subagent.waitForRun({ runId: run.runId, timeoutMs: opts.timeoutMs });
-            if (waited.status !== "ok") {
-                aiWarnings.push(`W_LLM_REVIEW_BATCH_ATTEMPT_FAILED: batch ${index + 1}/${batches.length} attempt ${attempt}/${AI_REVIEW_MAX_ATTEMPTS} ${waited.status}${waited.error ? ` (${waited.error})` : ""}.`);
-                continue;
-            }
-            const messages = await subagent.getSessionMessages({ sessionKey, limit: 20 });
-            const patch = extractJsonPatch(messages.messages);
+            if (reviewed.warning)
+                aiWarnings.push(reviewed.warning);
+            const patch = extractJsonPatch(reviewed.messages);
             if (!patch) {
                 aiWarnings.push(`W_LLM_REVIEW_BATCH_ATTEMPT_FAILED: batch ${index + 1}/${batches.length} attempt ${attempt}/${AI_REVIEW_MAX_ATTEMPTS} did not return a JSON Patch array.`);
                 continue;
@@ -124,6 +118,38 @@ export async function maybeRunAiReview(result, params, config, context, opts) {
             },
         },
         warnings: [...(result.warnings ?? []), ...aiWarnings, ...(applied.warnings ?? [])],
+    };
+}
+function resolveAiReviewBackend(context) {
+    const explicit = context.api.runtime?.aiReviewBackend;
+    if (explicit)
+        return explicit;
+    const subagent = context.api.runtime?.subagent;
+    if (!subagent)
+        return undefined;
+    return {
+        async review(params) {
+            const run = await subagent.run({
+                sessionKey: params.sessionKey,
+                message: params.message,
+                provider: params.provider,
+                model: params.model,
+                extraSystemPrompt: params.systemPrompt,
+                lane: "kbprep-review",
+                lightContext: true,
+                deliver: false,
+                idempotencyKey: params.idempotencyKey,
+            });
+            const waited = await subagent.waitForRun({ runId: run.runId, timeoutMs: params.timeoutMs });
+            if (waited.status !== "ok") {
+                return {
+                    messages: [],
+                    warning: `W_LLM_REVIEW_BACKEND_FAILED: ${waited.status}${waited.error ? ` (${waited.error})` : ""}.`,
+                };
+            }
+            const messages = await subagent.getSessionMessages({ sessionKey: params.sessionKey, limit: 20 });
+            return { messages: messages.messages };
+        },
     };
 }
 function buildReviewPrompt(reviewPack, batchNumber = 1, batchCount = 1, attempt = 1) {
@@ -281,19 +307,55 @@ function stringifyMessage(message) {
     return JSON.stringify(message);
 }
 function parseFirstJsonArray(text) {
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    const candidates = fenced ? [fenced[1], text] : [text];
+    const fencedCandidates = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1]);
+    const candidates = [...fencedCandidates, text];
     for (const candidate of candidates) {
-        const start = candidate.indexOf("[");
-        const end = candidate.lastIndexOf("]");
-        if (start < 0 || end <= start)
+        const parsed = parseJsonArrayCandidate(candidate.trim());
+        if (parsed)
+            return parsed;
+    }
+    return null;
+}
+function parseJsonArrayCandidate(candidate) {
+    for (let start = 0; start < candidate.length; start += 1) {
+        if (candidate[start] !== "[")
             continue;
-        try {
-            const parsed = JSON.parse(candidate.slice(start, end + 1));
-            if (Array.isArray(parsed))
-                return parsed;
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+        for (let index = start; index < candidate.length; index += 1) {
+            const char = candidate[index];
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                }
+                else if (char === "\\") {
+                    escaped = true;
+                }
+                else if (char === "\"") {
+                    inString = false;
+                }
+                continue;
+            }
+            if (char === "\"") {
+                inString = true;
+            }
+            else if (char === "[") {
+                depth += 1;
+            }
+            else if (char === "]") {
+                depth -= 1;
+                if (depth === 0) {
+                    try {
+                        const parsed = JSON.parse(candidate.slice(start, index + 1));
+                        if (Array.isArray(parsed))
+                            return parsed;
+                    }
+                    catch { }
+                    break;
+                }
+            }
         }
-        catch { }
     }
     return null;
 }

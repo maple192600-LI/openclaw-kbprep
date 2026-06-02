@@ -76,7 +76,7 @@ def _process_one_file(file_path: Path, output_root: str, profile: str,
         return {
             "ok": False,
             "error": {
-                "code": "KBPREP_WORKER_BAD_JSON",
+                "code": "E_WORKER_BAD_JSON",
                 "message": "No stdout from prepare subprocess",
                 "stderr_tail": proc.stderr.splitlines()[-20:],
             },
@@ -87,7 +87,7 @@ def _process_one_file(file_path: Path, output_root: str, profile: str,
         return {
             "ok": False,
             "error": {
-                "code": "KBPREP_WORKER_BAD_JSON",
+                "code": "E_WORKER_BAD_JSON",
                 "message": str(exc),
                 "stdout_preview": stdout[:500],
                 "stderr_tail": proc.stderr.splitlines()[-20:],
@@ -206,13 +206,13 @@ def run(data: dict) -> None:
     input_p = Path(input_dir)
     output_p = Path(output_root)
     if not input_p.exists() or not input_p.is_dir():
-        fail("KBPREP_INVALID_INPUT", f"input_dir does not exist or is not a directory: {input_dir}")
+        fail("E_INVALID_INPUT", f"input_dir does not exist or is not a directory: {input_dir}")
 
     files, inventory = _scan_input_files(input_p)
     inventory_path = _write_batch_inventory(output_p, inventory)
     if not files:
         fail(
-            "KBPREP_INVALID_INPUT",
+            "E_INVALID_INPUT",
             f"No supported files found in {input_dir}",
             details={
                 "batch_inventory_json": str(inventory_path),

@@ -7,6 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, appendFile } from "node:fs/promises";
 import { delimiter, dirname, join } from "node:path";
+import type { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { makeError, type KBPrepError } from "./errors.js";
 
@@ -32,6 +33,38 @@ export interface WorkerConfig {
   max_cpu_threads?: number;
   min_free_memory_gb?: number;
   mineru_timeout_seconds?: number;
+}
+
+async function writeStdin(stream: Writable, input: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      stream.off("error", onError);
+      stream.off("drain", onDrain);
+    };
+    const finish = () => {
+      cleanup();
+      stream.end(() => resolve());
+    };
+    const onError = (err: Error) => {
+      cleanup();
+      reject(err);
+    };
+    const onDrain = () => {
+      finish();
+    };
+
+    stream.once("error", onError);
+    try {
+      if (stream.write(input)) {
+        finish();
+        return;
+      }
+    } catch (err) {
+      onError(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+    stream.once("drain", onDrain);
+  });
 }
 
 /**
@@ -135,11 +168,9 @@ export async function callWorker<T = Record<string, unknown>>(
     });
   });
 
-  const inputJson = JSON.stringify(input);
-  child.stdin!.write(inputJson);
-  child.stdin!.end();
-
   try {
+    const inputJson = JSON.stringify(input);
+    await writeStdin(child.stdin!, inputJson);
     const { code } = await exitPromise;
     const envelope = parseEnvelope<T>(stdout, stderrLines.slice(-120));
 
@@ -158,7 +189,7 @@ export async function callWorker<T = Record<string, unknown>>(
     if (isAbortError(err)) {
       return {
         ok: false,
-        error: makeError("KBPREP_CANCELLED", "Worker call was cancelled.", {
+        error: makeError("E_CANCELLED", "Worker call was cancelled.", {
           recoverable: true,
           suggested_action: "Retry if needed.",
         }),
@@ -176,7 +207,7 @@ export async function callWorker<T = Record<string, unknown>>(
     }
     return {
       ok: false,
-      error: makeError("KBPREP_INTERNAL", String(err), {
+      error: makeError("E_INTERNAL", String(err), {
         details: { stderr_tail: stderrLines.slice(-10) },
       }),
     };
@@ -188,7 +219,7 @@ function parseEnvelope<T>(raw: string, stderrTail: string[]): WorkerResult<T> {
   if (!trimmed) {
     return {
       ok: false,
-      error: makeError("KBPREP_WORKER_BAD_JSON", "Worker returned empty stdout.", {
+      error: makeError("E_WORKER_BAD_JSON", "Worker returned empty stdout.", {
         details: { stderr_tail: stderrTail },
       }),
     };
@@ -198,7 +229,7 @@ function parseEnvelope<T>(raw: string, stderrTail: string[]): WorkerResult<T> {
   } catch (err) {
     return {
       ok: false,
-      error: makeError("KBPREP_WORKER_BAD_JSON", `Failed to parse worker stdout: ${err}`, {
+      error: makeError("E_WORKER_BAD_JSON", `Failed to parse worker stdout: ${err}`, {
         details: { stdout_preview: trimmed.slice(0, 500), stderr_tail: stderrTail },
       }),
     };

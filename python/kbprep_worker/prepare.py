@@ -427,7 +427,7 @@ def run(data: dict) -> None:
         )
         return
     except Exception as e:
-        error_code = "E_CONVERT_FAILED" if type(e).__name__ == "MinerUProcessError" else "KBPREP_INTERNAL"
+        error_code = "E_CONVERT_FAILED" if type(e).__name__ == "MinerUProcessError" else "E_INTERNAL"
         _stderr_log("error", "pipeline", str(e), error_code)
         import traceback
         tb = traceback.format_exc()

@@ -363,29 +363,32 @@ def _allows_cta_keyword_context(block: dict) -> bool:
     return any(term in text for term in ["平台规则", "违规案例", "不要", "判断标准", "限制条件"])
 
 
+DISCARDED_BODY_LOSS_EXEMPT_TYPES = {
+    "transcript_filler",
+    "marketing_cta",
+    "marketing_wrapper",
+    "author_identity",
+    "author_intro",
+    "image_artifact",
+    "layout_table_artifact",
+    "layout_separator",
+    "author_profile_links",
+    "toc",
+    "toc_heading",
+    "empty_heading",
+    "back_matter",
+    "refund_policy",
+    "footer",
+    "qr_image",
+    "empty",
+}
+
+
 def _counts_for_text_coverage(block: dict) -> bool:
     """Coverage gates measure body text retention, not image-link bookkeeping."""
     block_type = block.get("type")
     text = block.get("text", "").strip()
-    if block.get("status") == "discard" and block_type in {
-        "transcript_filler",
-        "marketing_cta",
-        "marketing_wrapper",
-        "author_identity",
-        "author_intro",
-        "image_artifact",
-        "layout_table_artifact",
-        "layout_separator",
-        "author_profile_links",
-        "toc",
-        "toc_heading",
-        "empty_heading",
-        "back_matter",
-        "refund_policy",
-        "footer",
-        "qr_image",
-        "empty",
-    }:
+    if block.get("status") == "discard" and block_type in DISCARDED_BODY_LOSS_EXEMPT_TYPES:
         return False
     if block_type in {"image_evidence", "image_operation", "diagram"}:
         return not _is_markdown_image_only(text)
@@ -395,25 +398,7 @@ def _counts_for_text_coverage(block: dict) -> bool:
 def _counts_for_discard_ratio(block: dict) -> bool:
     """Discard ratio gates body loss, not successful removal of known pollution."""
     block_type = block.get("type")
-    if block.get("status") == "discard" and block_type in {
-        "transcript_filler",
-        "marketing_cta",
-        "marketing_wrapper",
-        "author_identity",
-        "author_intro",
-        "image_artifact",
-        "layout_table_artifact",
-        "layout_separator",
-        "author_profile_links",
-        "toc",
-        "toc_heading",
-        "empty_heading",
-        "back_matter",
-        "refund_policy",
-        "footer",
-        "qr_image",
-        "empty",
-    }:
+    if block.get("status") == "discard" and block_type in DISCARDED_BODY_LOSS_EXEMPT_TYPES:
         return False
     return _counts_for_text_coverage(block)
 

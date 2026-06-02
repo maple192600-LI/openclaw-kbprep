@@ -58,7 +58,7 @@ def main() -> None:
         raw = sys.stdin.read().lstrip("\ufeff")
         input_data = json.loads(raw)
     except json.JSONDecodeError as e:
-        fail("KBPREP_INVALID_INPUT", f"Invalid JSON on stdin: {e}")
+        fail("E_INVALID_INPUT", f"Invalid JSON on stdin: {e}")
 
     dispatch = {
         "setup-env": cmd_setup_env,
@@ -75,13 +75,13 @@ def main() -> None:
 
     handler = dispatch.get(args.command)
     if handler is None:
-        fail("KBPREP_INTERNAL", f"Unknown command: {args.command}")
+        fail("E_INTERNAL", f"Unknown command: {args.command}")
 
     try:
         handler(input_data)
     except Exception as e:
         logging.getLogger(__name__).exception("Unhandled error in %s", args.command)
-        fail("KBPREP_INTERNAL", str(e), details={"exception_type": type(e).__name__})
+        fail("E_INTERNAL", str(e), details={"exception_type": type(e).__name__})
 
 
 def cmd_preflight(data: dict) -> None:

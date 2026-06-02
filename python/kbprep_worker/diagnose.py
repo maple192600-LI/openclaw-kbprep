@@ -182,7 +182,51 @@ def detect_text_profile(text: str, detected_format: str = "text") -> dict:
 def analyze_pdf(input_path: str) -> dict:
     """Analyze PDF file quality using PyMuPDF (fitz)."""
     warnings = []
-    result = {
+    result = _initial_pdf_result()
+
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        warnings.append("PyMuPDF not installed. PDF analysis limited. Install: pip install pymupdf")
+        # Try basic analysis with mineru's content extraction
+        result["text_layer_health"] = "unavailable"
+        result["warnings"] = warnings
+        return result
+
+    try:
+        doc = fitz.open(input_path)
+        page_stats = _collect_pdf_page_stats(doc)
+        total_text = page_stats["total_text"]
+        result.update({key: value for key, value in page_stats.items() if key != "total_text"})
+        image_pages = page_stats["image_pages"]
+        text_pages = page_stats["text_pages"]
+        image_count = page_stats["image_count"]
+        landscape_pages = page_stats["landscape_pages"]
+
+        quality = analyze_text_quality(total_text)
+        result["text_quality"] = quality
+        if total_text.strip():
+            result.update(detect_text_profile(total_text, "pdf"))
+
+        _apply_text_layer_assessment(result, quality, image_pages, text_pages, warnings)
+        _apply_image_ratio_assessment(result, image_pages, text_pages, warnings)
+        _append_ocr_confusion_warning(quality, warnings)
+
+        doc.close()
+
+        _apply_pdf_layout_profile(result, image_pages, text_pages, image_count, landscape_pages)
+        _apply_pdf_processing_strategy(result)
+
+    except Exception as e:
+        warnings.append(f"PDF analysis error: {e}")
+        result["text_layer_health"] = "error"
+
+    result["warnings"] = warnings
+    return result
+
+
+def _initial_pdf_result() -> dict:
+    return {
         "page_count": 0,
         "image_pages": 0,
         "text_pages": 0,
@@ -196,172 +240,150 @@ def analyze_pdf(input_path: str) -> dict:
         "recommended_pipeline": "mineru_pipeline",
     }
 
-    try:
-        import fitz  # PyMuPDF
-    except ImportError:
-        warnings.append("PyMuPDF not installed. PDF analysis limited. Install: pip install pymupdf")
-        # Try basic analysis with mineru's content extraction
-        result["text_layer_health"] = "unavailable"
-        result["warnings"] = warnings
-        return result
 
-    try:
-        doc = fitz.open(input_path)
-        result["page_count"] = len(doc)
+def _collect_pdf_page_stats(doc) -> dict:
+    image_pages = 0
+    text_pages = 0
+    empty_pages = 0
+    total_text = ""
+    image_count = 0
+    landscape_pages = 0
+    max_image_count_on_page = 0
 
-        image_pages = 0
-        text_pages = 0
-        empty_pages = 0
-        total_text = ""
-        image_count = 0
-        landscape_pages = 0
-        max_image_count_on_page = 0
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        if page.rect.width > page.rect.height:
+            landscape_pages += 1
+        text = page.get_text("text").strip()
+        images = page.get_images(full=True)
+        image_count += len(images)
+        max_image_count_on_page = max(max_image_count_on_page, len(images))
 
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            if page.rect.width > page.rect.height:
-                landscape_pages += 1
-            text = page.get_text("text").strip()
-            images = page.get_images(full=True)
-            image_count += len(images)
-            max_image_count_on_page = max(max_image_count_on_page, len(images))
-
-            if not text and images:
-                image_pages += 1
-            elif text:
-                text_pages += 1
-                total_text += text + "\n"
-            else:
-                empty_pages += 1
-
-        result["image_pages"] = image_pages
-        result["text_pages"] = text_pages
-        result["empty_pages"] = empty_pages
-        result["total_text_length"] = len(total_text)
-        result["image_count"] = image_count
-        result["landscape_pages"] = landscape_pages
-        result["max_image_count_on_page"] = max_image_count_on_page
-        result["average_text_chars_per_text_page"] = round(len(total_text) / text_pages, 1) if text_pages else 0
-
-        # Analyze text quality
-        quality = analyze_text_quality(total_text)
-        result["text_quality"] = quality
-        if total_text.strip():
-            result.update(detect_text_profile(total_text, "pdf"))
-
-        # Determine text layer health
-        if text_pages == 0 and image_pages > 0:
-            result["text_layer_health"] = "no_text_layer"
-            result["pdf_subtype"] = "image_only_or_scanned"
-            result["is_scanned"] = True
-            result["needs_ocr"] = True
-            result["recommended_pipeline"] = "mineru_pipeline_ocr"
-        elif quality.get("unreadable_text_ratio", quality["garbled_ratio"]) > 0.25:
-            result["text_layer_health"] = "bad"
-            result["pdf_subtype"] = "garbled_text_layer"
-            result["is_garbled"] = True
-            result["needs_ocr"] = True
-            result["recommended_pipeline"] = "mineru_pipeline_ocr"
-            warnings.append(
-                "W_PDF_TEXT_LAYER_UNTRUSTED: "
-                f"unreadable text ratio {quality.get('unreadable_text_ratio', 0):.2%}"
-            )
-        elif quality.get("mojibake_ratio", 0) > 0.08:
-            result["text_layer_health"] = "bad"
-            result["pdf_subtype"] = "garbled_text_layer"
-            result["is_garbled"] = True
-            result["needs_ocr"] = True
-            result["recommended_pipeline"] = "mineru_pipeline_ocr"
-            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: mojibake ratio {quality['mojibake_ratio']:.2%}")
-        elif quality["garbled_ratio"] > 0.08:
-            result["text_layer_health"] = "bad"
-            result["pdf_subtype"] = "garbled_text_layer"
-            result["is_garbled"] = True
-            result["needs_ocr"] = True
-            result["recommended_pipeline"] = "mineru_pipeline_ocr"
-            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: garbled ratio {quality['garbled_ratio']:.2%}")
-        elif quality.get("mojibake_ratio", 0) > 0.03:
-            result["text_layer_health"] = "degraded"
-            result["pdf_subtype"] = "garbled_text_layer"
-            result["needs_ocr"] = True
-            result["recommended_pipeline"] = "mineru_pipeline_ocr"
-            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: mojibake ratio {quality['mojibake_ratio']:.2%}")
-        elif quality["garbled_ratio"] > 0.03:
-            result["text_layer_health"] = "degraded"
-            result["pdf_subtype"] = "garbled_text_layer"
-            result["needs_ocr"] = True
-            result["recommended_pipeline"] = "mineru_pipeline_ocr"
-            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: garbled ratio {quality['garbled_ratio']:.2%}")
-        elif quality["chinese_ratio"] < 0.05 and result["page_count"] > 5:
-            result["text_layer_health"] = "low_content"
-            warnings.append("Low Chinese content ratio — may be scanned or non-Chinese document")
+        if not text and images:
+            image_pages += 1
+        elif text:
+            text_pages += 1
+            total_text += text + "\n"
         else:
-            result["text_layer_health"] = "good"
-            result["pdf_subtype"] = "text_layer"
+            empty_pages += 1
 
-        # Check image page ratio
-        if result["page_count"] > 0:
-            image_page_ratio = image_pages / result["page_count"]
-            result["image_page_ratio"] = round(image_page_ratio, 4)
-            if image_page_ratio > 0.5:
-                result["needs_ocr"] = True
-                result["pdf_subtype"] = "image_heavy_mixed" if text_pages else "image_only_or_scanned"
-                if result["recommended_pipeline"] == "mineru_pipeline":
-                    result["recommended_pipeline"] = "mineru_pipeline_ocr"
-                    warnings.append(f"W_FORCE_OCR_RECOMMENDED: {image_page_ratio:.0%} pages are image-only")
+    return {
+        "page_count": len(doc),
+        "image_pages": image_pages,
+        "text_pages": text_pages,
+        "empty_pages": empty_pages,
+        "total_text": total_text,
+        "total_text_length": len(total_text),
+        "image_count": image_count,
+        "landscape_pages": landscape_pages,
+        "max_image_count_on_page": max_image_count_on_page,
+        "average_text_chars_per_text_page": round(len(total_text) / text_pages, 1) if text_pages else 0,
+    }
 
-        # OCR AI confusion check
-        if quality["ocr_ai_confusion_count"] > 0:
-            warnings.append(f"W_OCR_AI_CONFUSION: {quality['ocr_ai_confusion_count']} AI/Al confusion patterns found")
 
-        doc.close()
+def _apply_bad_text_layer(result: dict, warnings: list[str], message: str, *, degraded: bool = False) -> None:
+    result["text_layer_health"] = "degraded" if degraded else "bad"
+    result["pdf_subtype"] = "garbled_text_layer"
+    result["needs_ocr"] = True
+    result["recommended_pipeline"] = "mineru_pipeline_ocr"
+    if not degraded:
+        result["is_garbled"] = True
+    warnings.append(message)
 
-        if result["page_count"] > 0 and image_pages > 0 and text_pages > 0 and "pdf_subtype" not in result:
-            result["pdf_subtype"] = "mixed_text_image"
-        landscape_ratio = landscape_pages / result["page_count"] if result["page_count"] else 0
-        result["landscape_ratio"] = round(landscape_ratio, 4)
-        avg_chars = result["average_text_chars_per_text_page"]
-        slide_like_score = 0.0
-        if result["page_count"] >= 3:
-            if landscape_ratio >= 0.8:
-                slide_like_score += 0.45
-            if avg_chars and avg_chars < 900:
-                slide_like_score += 0.25
-            if image_count >= result["page_count"]:
-                slide_like_score += 0.2
-            if text_pages <= max(1, result["page_count"] * 0.25):
-                slide_like_score += 0.1
-        result["slide_like_score"] = round(min(slide_like_score, 1.0), 4)
 
-        if result["slide_like_score"] >= 0.65:
-            result["layout_profile"] = "slide_deck_or_ppt_export"
-        elif landscape_ratio >= 0.8:
-            result["layout_profile"] = "landscape_report"
-        elif image_pages / result["page_count"] > 0.5 if result["page_count"] else False:
-            result["layout_profile"] = "image_heavy_document"
-        else:
-            result["layout_profile"] = "document_pages"
+def _apply_text_layer_assessment(result: dict, quality: dict, image_pages: int, text_pages: int, warnings: list[str]) -> None:
+    if text_pages == 0 and image_pages > 0:
+        result["text_layer_health"] = "no_text_layer"
+        result["pdf_subtype"] = "image_only_or_scanned"
+        result["is_scanned"] = True
+        result["needs_ocr"] = True
+        result["recommended_pipeline"] = "mineru_pipeline_ocr"
+    elif quality.get("unreadable_text_ratio", quality["garbled_ratio"]) > 0.25:
+        _apply_bad_text_layer(
+            result,
+            warnings,
+            "W_PDF_TEXT_LAYER_UNTRUSTED: "
+            f"unreadable text ratio {quality.get('unreadable_text_ratio', 0):.2%}",
+        )
+    elif quality.get("mojibake_ratio", 0) > 0.08:
+        _apply_bad_text_layer(result, warnings, f"W_PDF_TEXT_LAYER_UNTRUSTED: mojibake ratio {quality['mojibake_ratio']:.2%}")
+    elif quality["garbled_ratio"] > 0.08:
+        _apply_bad_text_layer(result, warnings, f"W_PDF_TEXT_LAYER_UNTRUSTED: garbled ratio {quality['garbled_ratio']:.2%}")
+    elif quality.get("mojibake_ratio", 0) > 0.03:
+        _apply_bad_text_layer(result, warnings, f"W_PDF_TEXT_LAYER_UNTRUSTED: mojibake ratio {quality['mojibake_ratio']:.2%}", degraded=True)
+    elif quality["garbled_ratio"] > 0.03:
+        _apply_bad_text_layer(result, warnings, f"W_PDF_TEXT_LAYER_UNTRUSTED: garbled ratio {quality['garbled_ratio']:.2%}", degraded=True)
+    elif quality["chinese_ratio"] < 0.05 and result["page_count"] > 5:
+        result["text_layer_health"] = "low_content"
+        warnings.append("Low Chinese content ratio — may be scanned or non-Chinese document")
+    else:
+        result["text_layer_health"] = "good"
+        result["pdf_subtype"] = "text_layer"
 
-        if (
-            image_count >= result["page_count"]
-            and text_pages <= max(1, result["page_count"] * 0.2)
-            and landscape_ratio > 0.5
-        ):
-            result["pdf_subtype"] = "ppt_exported_or_scanned"
-        elif (
-            result.get("pdf_subtype") == "text_layer"
-            and result["layout_profile"] == "slide_deck_or_ppt_export"
-        ):
-            result["pdf_subtype"] = "ppt_exported_text_layer"
 
-        _apply_pdf_processing_strategy(result)
+def _apply_image_ratio_assessment(result: dict, image_pages: int, text_pages: int, warnings: list[str]) -> None:
+    if result["page_count"] <= 0:
+        return
+    image_page_ratio = image_pages / result["page_count"]
+    result["image_page_ratio"] = round(image_page_ratio, 4)
+    if image_page_ratio > 0.5:
+        result["needs_ocr"] = True
+        result["pdf_subtype"] = "image_heavy_mixed" if text_pages else "image_only_or_scanned"
+        if result["recommended_pipeline"] == "mineru_pipeline":
+            result["recommended_pipeline"] = "mineru_pipeline_ocr"
+            warnings.append(f"W_FORCE_OCR_RECOMMENDED: {image_page_ratio:.0%} pages are image-only")
 
-    except Exception as e:
-        warnings.append(f"PDF analysis error: {e}")
-        result["text_layer_health"] = "error"
 
-    result["warnings"] = warnings
-    return result
+def _append_ocr_confusion_warning(quality: dict, warnings: list[str]) -> None:
+    if quality["ocr_ai_confusion_count"] > 0:
+        warnings.append(f"W_OCR_AI_CONFUSION: {quality['ocr_ai_confusion_count']} AI/Al confusion patterns found")
+
+
+def _apply_pdf_layout_profile(
+    result: dict,
+    image_pages: int,
+    text_pages: int,
+    image_count: int,
+    landscape_pages: int,
+) -> None:
+    if result["page_count"] > 0 and image_pages > 0 and text_pages > 0 and "pdf_subtype" not in result:
+        result["pdf_subtype"] = "mixed_text_image"
+    landscape_ratio = landscape_pages / result["page_count"] if result["page_count"] else 0
+    result["landscape_ratio"] = round(landscape_ratio, 4)
+
+    avg_chars = result["average_text_chars_per_text_page"]
+    slide_like_score = 0.0
+    if result["page_count"] >= 3:
+        if landscape_ratio >= 0.8:
+            slide_like_score += 0.45
+        if avg_chars and avg_chars < 900:
+            slide_like_score += 0.25
+        if image_count >= result["page_count"]:
+            slide_like_score += 0.2
+        if text_pages <= max(1, result["page_count"] * 0.25):
+            slide_like_score += 0.1
+    result["slide_like_score"] = round(min(slide_like_score, 1.0), 4)
+
+    if result["slide_like_score"] >= 0.65:
+        result["layout_profile"] = "slide_deck_or_ppt_export"
+    elif landscape_ratio >= 0.8:
+        result["layout_profile"] = "landscape_report"
+    elif image_pages / result["page_count"] > 0.5 if result["page_count"] else False:
+        result["layout_profile"] = "image_heavy_document"
+    else:
+        result["layout_profile"] = "document_pages"
+
+    if (
+        image_count >= result["page_count"]
+        and text_pages <= max(1, result["page_count"] * 0.2)
+        and landscape_ratio > 0.5
+    ):
+        result["pdf_subtype"] = "ppt_exported_or_scanned"
+    elif (
+        result.get("pdf_subtype") == "text_layer"
+        and result["layout_profile"] == "slide_deck_or_ppt_export"
+    ):
+        result["pdf_subtype"] = "ppt_exported_text_layer"
 
 
 def _apply_pdf_processing_strategy(result: dict) -> None:
@@ -474,7 +496,7 @@ def analyze_markdown(input_path: str, detected_format: str | None = None) -> dic
 
 def _text_for_profile(text: str, detected_format: str) -> str:
     if detected_format == "html":
-        text = re.sub(r"(?is)<(script|style|nav|footer|header)\b[^>]*>.*?</\1>", "\n", text)
+        text = re.sub(r"(?is)<(script|style|nav|footer|header|aside|figure|figcaption|noscript|template)\b[^>]*>.*?</\1>", "\n", text)
         text = re.sub(r"(?is)<br\s*/?>", "\n", text)
         text = re.sub(r"(?is)</(p|div|li|h[1-6]|tr|section|article)>", "\n", text)
         text = re.sub(r"(?is)<[^>]+>", " ", text)

@@ -6,7 +6,7 @@ KBPrep focuses on preparation only: detect file type, convert as losslessly as p
 
 It does not build a RAG index or download from remote platforms. By default it uses `profile="curated_obsidian_kb"` and renders an Obsidian-ready wiki folder from the cleaned blocks. Use `profile="standard"` only when you explicitly want a broad cleaned Markdown file instead of knowledge-base curation.
 
-OpenClaw is one supported host adapter, not the project boundary. Non-OpenClaw users can call the same worker through the standalone CLI or the Python worker module.
+OpenClaw is one supported host adapter, not the project boundary. The npm package name is `kbprep`; `openclaw-kbprep` is only the OpenClaw adapter/plugin id and the current GitHub repository slug. Non-OpenClaw users can call the same worker through the standalone CLI or the Python worker module.
 
 ![KB Prep Tool showcase](docs/showcase-preview.png)
 
@@ -37,6 +37,8 @@ kbprep-analyze --input ./source.pdf
 kbprep-prepare --input ./source.pdf --output ./.kbprep/source
 kbprep-cleanup --output ./.kbprep/source --action finalize
 ```
+
+Full CLI usage is in [`docs/standalone-cli.md`](docs/standalone-cli.md).
 
 Expected output:
 
@@ -85,7 +87,7 @@ Finalize removes the temporary audit/process material under `output_root` (`runs
 
 If you are not sure yet, do nothing: `keep_latest` keeps only a short review window by count and age. You can also run `kbprep_cleanup(output_root, action="expired", older_than_days=7)` to remove old run history, or `kbprep_cleanup(output_root, action="all")` to remove known intermediate artifacts without touching source files or source-side final Markdown.
 
-Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when you want an AI or human to review uncertain blocks. Use `mode="ai_review"` only when OpenClaw subagents are available and you accept the extra model call.
+Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when you want an AI or human to review uncertain blocks. Use `mode="ai_review"` only when OpenClaw subagents are available and you accept the extra model call. The standalone CLI does not yet provide a generic LLM backend; CLI users should use `rules_only` or `rules_plus_review_pack` and apply reviewed metadata patches with `kbprep-apply-review`.
 
 ## Tools
 
@@ -197,6 +199,8 @@ openclaw plugins inspect openclaw-kbprep --runtime --json
 ```
 
 This repository includes the compiled `dist/` runtime because OpenClaw managed installs require readable JavaScript runtime files for native plugins. Local dependency folders, local Python runtimes, raw source documents, and generated conversion outputs remain ignored.
+
+Known product and engineering gaps are tracked in [`docs/known-issues.md`](docs/known-issues.md).
 
 ## OpenClaw Plugin Lifecycle Checks
 

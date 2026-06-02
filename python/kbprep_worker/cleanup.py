@@ -53,13 +53,13 @@ def run(data: dict) -> None:
 
     if action not in {"finalize", "expired", "all"}:
         fail(
-            "KBPREP_INVALID_INPUT",
+            "E_INVALID_INPUT",
             f"Unsupported cleanup action: {action}",
             details={"allowed_actions": ["finalize", "expired", "all"]},
         )
 
     if not output_root.exists() or not output_root.is_dir():
-        fail("KBPREP_INVALID_INPUT", f"output_root does not exist or is not a directory: {output_root}")
+        fail("E_INVALID_INPUT", f"output_root does not exist or is not a directory: {output_root}")
 
     root = output_root.resolve()
 

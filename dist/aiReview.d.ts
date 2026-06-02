@@ -11,9 +11,24 @@ type AiReviewParams = {
     ai_review_provider?: string;
     ai_review_model?: string;
 };
+type AiReviewBackend = {
+    review: (params: {
+        sessionKey: string;
+        message: string;
+        systemPrompt: string;
+        provider?: string;
+        model?: string;
+        timeoutMs?: number;
+        idempotencyKey?: string;
+    }) => Promise<{
+        messages: unknown[];
+        warning?: string;
+    }>;
+};
 type AiReviewContext = {
     api: {
         runtime?: {
+            aiReviewBackend?: AiReviewBackend;
             subagent?: {
                 run: (params: {
                     sessionKey: string;

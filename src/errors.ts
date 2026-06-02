@@ -27,6 +27,10 @@ export const KBPREP_ERROR_CODES = [
   "E_SPLIT_FAILED",
   "E_QA_FAILED",
   "E_TIMEOUT",
+  "E_INVALID_INPUT",
+  "E_WORKER_BAD_JSON",
+  "E_CANCELLED",
+  "E_INTERNAL",
   // Legacy codes kept for backward compat
   "KBPREP_INVALID_INPUT",
   "KBPREP_WORKER_TIMEOUT",
