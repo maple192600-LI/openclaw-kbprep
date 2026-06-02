@@ -27,7 +27,7 @@ export interface WorkerCallOptions {
   config?: WorkerConfig;
 }
 
-interface WorkerConfig {
+export interface WorkerConfig {
   device_override?: "auto" | "cuda" | "cpu";
   max_cpu_threads?: number;
   min_free_memory_gb?: number;

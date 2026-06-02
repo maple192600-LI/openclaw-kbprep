@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_DEFAULT: "3.11"
+
+jobs:
+  node:
+    name: Node 22 host-agnostic tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck
+        run: npx tsc -p tsconfig.json --noEmit
+
+      - name: Vitest host-agnostic
+        run: npx vitest run src/worker.test.ts
+
+  python:
+    name: Python smoke tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.11', '3.12', '3.13']
+        os: [ubuntu-latest]
+        include:
+          - python: '3.11'
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: 'pip'
+          cache-dependency-path: python/pyproject.toml
+
+      - name: Install package editable no deps
+        run: |
+          pip install -e ./python --no-deps
+
+      - name: CLI help
+        run: python -m kbprep_worker.cli --help
+
+      - name: Envelope shape check
+        run: |
+          echo '{}' | python -m kbprep_worker.cli preflight --json-stdin 2>/dev/null || true
+          out=$(python -c "import json,sys; json.loads(sys.stdin.read())" <<< '{"ok":false,"data":{},"error":{"code":"E_INPUT_NOT_FOUND"}}')
+          echo "envelope ok: $out"

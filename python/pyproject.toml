@@ -1,6 +1,6 @@
 [project]
 name = "kbprep-worker"
-version = "0.4.2"
+version = "0.4.3"
 description = "KBPrep Python worker: prepare local raw files into clean Markdown"
 requires-python = ">=3.10,<3.14"
 dependencies = [
@@ -10,6 +10,11 @@ dependencies = [
 
 [project.optional-dependencies]
 cuda = ["torch==2.8.0", "torchvision==0.23.0"]
+
+[project.scripts]
+# After `pip install -e .` the `kbprep` command is available globally.
+# It is a thin shim around `python -m kbprep_worker.cli`.
+kbprep = "kbprep_worker.cli:main"
 
 [build-system]
 requires = ["setuptools>=75.0"]

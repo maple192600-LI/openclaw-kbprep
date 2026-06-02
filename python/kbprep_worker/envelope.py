@@ -1,8 +1,9 @@
 """
-JSON envelope helpers for stdout communication with TypeScript layer.
+JSON envelope helpers for stdout communication with the host application.
 
-The OpenClaw plugin runs the worker as short-lived CLI subprocesses.
-Each command writes one JSON envelope to stdout and exits.
+The worker runs as short-lived CLI subprocesses spawned by the host
+(OpenClaw plugin, MCP server, or standalone CLI). Each command writes one
+JSON envelope to stdout and exits.
 """
 import json
 import sys

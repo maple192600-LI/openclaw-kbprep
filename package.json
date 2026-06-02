@@ -1,15 +1,25 @@
 {
   "name": "openclaw-kbprep",
-  "version": "0.4.3",
-  "description": "OpenClaw source-to-clean-Markdown preparation plugin for Obsidian and LLM Wiki workflows.",
+  "version": "0.5.0",
+  "description": "Source-to-clean-Markdown preparation for Obsidian and LLM Wiki workflows. Host-agnostic: works as an OpenClaw plugin, MCP server, or standalone CLI.",
   "type": "module",
-  "private": true,
+  "bin": {
+    "kbprep-preflight": "./dist/adapters/standalone/bin/preflight.js",
+    "kbprep-analyze": "./dist/adapters/standalone/bin/analyze.js",
+    "kbprep-prepare": "./dist/adapters/standalone/bin/prepare.js",
+    "kbprep-apply-review": "./dist/adapters/standalone/bin/apply-review.js",
+    "kbprep-cleanup": "./dist/adapters/standalone/bin/cleanup.js",
+    "kbprep-batch": "./dist/adapters/standalone/bin/batch.js",
+    "kbprep-mcp": "./dist/adapters/mcp/bin.js"
+  },
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "docs:serve": "node scripts/serve-docs.mjs",
     "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
     "plugin:validate": "npm run build && openclaw plugins validate --entry ./dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:host-agnostic": "vitest run src/worker.test.ts src/adapters/**/*.test.ts",
+    "lint:tsc": "tsc -p tsconfig.json --noEmit"
   },
   "files": [
     "dist",
@@ -18,15 +28,20 @@
     "skills",
     "openclaw.plugin.json",
     "README.md",
-    "package.json"
+    "package.json",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=22"
   },
-  "peerDependencies": {
-    "openclaw": ">=2026.5.17"
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {
