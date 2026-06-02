@@ -9,7 +9,7 @@
     "docs:serve": "node scripts/serve-docs.mjs",
     "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
     "plugin:validate": "npm run build && openclaw plugins validate --entry ./dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run --pool=vmThreads --maxWorkers=1 --minWorkers=1"
   },
   "files": [
     "dist",
