@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
 
 - Renamed the npm package identity to `kbprep` while keeping `openclaw-kbprep` as the OpenClaw adapter id.
 - Added a generic AI review backend interface with OpenClaw subagent compatibility.
