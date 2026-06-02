@@ -17,7 +17,8 @@
     "docs:serve": "node scripts/serve-docs.mjs",
     "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
     "plugin:validate": "npm run build && openclaw plugins validate --entry ./dist/index.js",
-    "test": "vitest run --pool=vmThreads --maxWorkers=1 --minWorkers=1"
+    "pack:check": "node scripts/check-pack.mjs",
+    "test": "vitest run --pool=forks --maxWorkers=1 --testTimeout=30000"
   },
   "files": [
     "dist",
@@ -49,7 +50,7 @@
     "@types/node": "^25.9.1",
     "openclaw": "2026.5.27",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "vitest": "^4.1.8"
   },
   "openclaw": {
     "extensions": [

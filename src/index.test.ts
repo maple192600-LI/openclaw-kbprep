@@ -155,6 +155,7 @@ describe("openclaw-kbprep", () => {
     expect(payload.data.latest_outputs.cleaned_md).toContain("cleaned.md");
     expect(payload.data.latest_outputs.diagnosis_report).toContain("diagnosis_report.json");
     expect(payload.data.latest_outputs.obsidian_dir).toContain("obsidian");
+    expect(payload.data.latest_outputs.obsidian_index).toContain("00-索引.md");
 
     const cleaned = await readFile(payload.data.latest_outputs.cleaned_md, "utf-8");
     const obsidianIndex = await readFile(join(payload.data.latest_outputs.obsidian_dir, "00-索引.md"), "utf-8");
