@@ -120,18 +120,27 @@ def run(data: dict) -> None:
         for block in blocks:
             f.write(json.dumps(block, ensure_ascii=False) + "\n")
 
-    # Re-render outputs
-    from . import render_outputs as render_mod
-    source_hash = blocks[0].get("source_sha256", "") if blocks else ""
-    run_id = run_p.name
-    render_mod.render(blocks=blocks, run_dir=run_dir, source_hash=source_hash, run_id=run_id)
-
     previous_quality = {}
     if quality_path.exists():
         try:
             previous_quality = json.loads(quality_path.read_text(encoding="utf-8"))
         except Exception:
             previous_quality = {}
+
+    # Re-render outputs
+    from . import render_outputs as render_mod
+    source_hash = blocks[0].get("source_sha256", "") if blocks else ""
+    run_id = run_p.name
+    profile = "curated_obsidian_kb" if (run_p / "obsidian").exists() else "standard"
+    render_mod.render(
+        blocks=blocks,
+        run_dir=run_dir,
+        source_hash=source_hash,
+        run_id=run_id,
+        profile=profile,
+        source_title=_source_title_from_previous_quality(previous_quality, run_p),
+    )
+
     source_type = previous_quality.get("source_type", "generic_block")
     diagnosis = _read_diagnosis(run_p)
 
@@ -175,7 +184,7 @@ def run(data: dict) -> None:
     if not strict_errors:
         output_root = _find_output_root(run_p)
         if output_root:
-            latest_outputs = _publish_latest_outputs(run_p, output_root)
+            latest_outputs = _publish_latest_outputs(run_p, output_root, profile)
             _update_latest_json(output_root, run_p, latest_outputs, previous_quality, source_type)
             published = True
 
@@ -190,6 +199,8 @@ def run(data: dict) -> None:
             "discarded_md": str(run_p / "discarded.md"),
             "review_needed_md": str(run_p / "review_needed.md"),
             "audit_md": str(run_p / "audit.md"),
+            "obsidian_dir": str(run_p / "obsidian") if (run_p / "obsidian").exists() else None,
+            "obsidian_index": str(run_p / "obsidian" / "00-索引.md") if (run_p / "obsidian" / "00-索引.md").exists() else None,
             "quality_report": str(run_p / "quality_report.json"),
         },
         "latest_outputs": latest_outputs,
@@ -236,6 +247,22 @@ def _read_diagnosis(run_p: Path) -> dict:
         return {}
 
 
+def _source_title_from_previous_quality(previous_quality: dict, run_p: Path) -> str:
+    source_file = previous_quality.get("input_file")
+    if isinstance(source_file, str) and source_file.strip():
+        return Path(source_file).stem
+    diagnosis_path = run_p / "diagnosis_report.json"
+    if diagnosis_path.exists():
+        try:
+            diagnosis = json.loads(diagnosis_path.read_text(encoding="utf-8"))
+            input_file = diagnosis.get("input_file")
+            if isinstance(input_file, str) and input_file.strip():
+                return Path(input_file).stem
+        except Exception:
+            pass
+    return run_p.name
+
+
 def _run_output_paths(run_p: Path) -> dict:
     return {
         "diagnosis_report": str(run_p / "diagnosis_report.json"),
@@ -246,10 +273,12 @@ def _run_output_paths(run_p: Path) -> dict:
         "quality_report": str(run_p / "quality_report.json"),
         "parts_dir": str(run_p / "parts"),
         "images_dir": str(run_p / "images"),
+        "obsidian_dir": str(run_p / "obsidian") if (run_p / "obsidian").exists() else None,
+        "obsidian_index": str(run_p / "obsidian" / "00-索引.md") if (run_p / "obsidian" / "00-索引.md").exists() else None,
     }
 
 
-def _publish_latest_outputs(run_p: Path, output_root: Path) -> dict:
+def _publish_latest_outputs(run_p: Path, output_root: Path, profile: str = "standard") -> dict:
     output_root.mkdir(parents=True, exist_ok=True)
     input_path = _input_path_from_latest(output_root)
     for name in [
@@ -271,9 +300,10 @@ def _publish_latest_outputs(run_p: Path, output_root: Path) -> dict:
         elif name == "review_pack.json" and dst.exists():
             dst.unlink()
 
-    final_md = _source_final_markdown_path(input_path) if input_path else output_root / "cleaned.md"
-    final_assets_dir = _source_final_assets_dir(input_path) if input_path else output_root / "images"
-    if input_path:
+    source_side_final = profile != "curated_obsidian_kb"
+    final_md = (_source_final_markdown_path(input_path) if input_path else output_root / "cleaned.md") if source_side_final else None
+    final_assets_dir = (_source_final_assets_dir(input_path) if input_path else output_root / "images") if source_side_final else None
+    if input_path and source_side_final:
         _publish_direct_final_to_source(run_p, input_path)
 
     src_parts = run_p / "parts"
@@ -294,13 +324,22 @@ def _publish_latest_outputs(run_p: Path, output_root: Path) -> dict:
     else:
         dst_images.mkdir(parents=True, exist_ok=True)
 
+    src_obsidian = run_p / "obsidian"
+    dst_obsidian = output_root / "obsidian"
+    if dst_obsidian.exists():
+        shutil.rmtree(dst_obsidian)
+    if src_obsidian.exists():
+        shutil.copytree(src_obsidian, dst_obsidian)
+
+    obsidian_index = dst_obsidian / "00-索引.md"
+    review_pack = output_root / "review_pack.json"
     return {
         "converted_md": str(output_root / "converted.md"),
         "diagnosis_report": str(output_root / "diagnosis_report.json"),
         "blocks_jsonl": str(output_root / "blocks.jsonl"),
         "cleaned_md": str(output_root / "cleaned.md"),
-        "final_md": str(final_md),
-        "final_assets_dir": str(final_assets_dir),
+        "final_md": str(final_md) if final_md else None,
+        "final_assets_dir": str(final_assets_dir) if final_assets_dir else None,
         "discarded_md": str(output_root / "discarded.md"),
         "review_needed_md": str(output_root / "review_needed.md"),
         "quality_report": str(output_root / "quality_report.json"),
@@ -308,7 +347,9 @@ def _publish_latest_outputs(run_p: Path, output_root: Path) -> dict:
         "audit_md": str(output_root / "audit.md"),
         "parts_dir": str(output_root / "parts"),
         "images_dir": str(output_root / "images"),
-        "review_pack": str(output_root / "review_pack.json"),
+        "obsidian_dir": str(dst_obsidian) if dst_obsidian.exists() else None,
+        "obsidian_index": str(obsidian_index) if obsidian_index.exists() else None,
+        "review_pack": str(review_pack) if review_pack.exists() else None,
     }
 
 

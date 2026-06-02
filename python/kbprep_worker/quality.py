@@ -68,22 +68,43 @@ def run_quality_check(
     run_p = Path(run_dir)
 
     # ── Conversion quality ────────────────────────────────────────
+    conversion_report = _read_json_file(run_p / "conversion_report.json")
+    source_text_layer = _source_text_layer_status(diagnosis, conversion_report)
     text_quality = diagnosis.get("text_quality", {})
     garbled_ratio = text_quality.get("garbled_ratio", 0)
     unreadable_ratio = text_quality.get("unreadable_text_ratio", 0)
     mojibake_ratio = text_quality.get("mojibake_ratio", 0)
-    if garbled_ratio > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
-        strict_errors.append(f"E_TEXT_LAYER_GARBLED: garbled ratio {garbled_ratio:.2%} exceeds strict threshold")
-    elif garbled_ratio > CONVERSION_THRESHOLDS["garbage_ratio_warn"]:
-        warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: garbled ratio {garbled_ratio:.2%}")
-    if unreadable_ratio > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
-        strict_errors.append(f"E_TEXT_LAYER_UNREADABLE: unreadable ratio {unreadable_ratio:.2%} exceeds strict threshold")
-    elif unreadable_ratio > CONVERSION_THRESHOLDS["garbage_ratio_warn"]:
-        warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: unreadable ratio {unreadable_ratio:.2%}")
-    if mojibake_ratio > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
-        strict_errors.append(f"E_TEXT_LAYER_MOJIBAKE: mojibake ratio {mojibake_ratio:.2%} exceeds strict threshold")
-    elif mojibake_ratio > CONVERSION_THRESHOLDS["garbage_ratio_warn"]:
-        warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: mojibake ratio {mojibake_ratio:.2%}")
+    if source_text_layer["superseded_by_conversion"]:
+        if max(garbled_ratio, unreadable_ratio, mojibake_ratio) > CONVERSION_THRESHOLDS["garbage_ratio_warn"]:
+            warnings.append(
+                "W_SOURCE_TEXT_LAYER_SUPERSEDED: source PDF text layer is unreadable, "
+                "so final quality is judged from the converted/OCR output."
+            )
+    else:
+        if garbled_ratio > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
+            strict_errors.append(f"E_TEXT_LAYER_GARBLED: garbled ratio {garbled_ratio:.2%} exceeds strict threshold")
+        elif garbled_ratio > CONVERSION_THRESHOLDS["garbage_ratio_warn"]:
+            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: garbled ratio {garbled_ratio:.2%}")
+        if unreadable_ratio > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
+            strict_errors.append(f"E_TEXT_LAYER_UNREADABLE: unreadable ratio {unreadable_ratio:.2%} exceeds strict threshold")
+        elif unreadable_ratio > CONVERSION_THRESHOLDS["garbage_ratio_warn"]:
+            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: unreadable ratio {unreadable_ratio:.2%}")
+        if mojibake_ratio > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
+            strict_errors.append(f"E_TEXT_LAYER_MOJIBAKE: mojibake ratio {mojibake_ratio:.2%} exceeds strict threshold")
+        elif mojibake_ratio > CONVERSION_THRESHOLDS["garbage_ratio_warn"]:
+            warnings.append(f"W_PDF_TEXT_LAYER_UNTRUSTED: mojibake ratio {mojibake_ratio:.2%}")
+
+    converted_text_quality = _converted_text_quality(conversion_report)
+    if converted_text_quality:
+        converted_garbled = converted_text_quality.get("garbled_ratio", 0)
+        converted_unreadable = converted_text_quality.get("unreadable_text_ratio", 0)
+        converted_mojibake = converted_text_quality.get("mojibake_ratio", 0)
+        if converted_garbled > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
+            strict_errors.append(f"E_CONVERTED_TEXT_GARBLED: converted text garbled ratio {converted_garbled:.2%} exceeds strict threshold")
+        if converted_unreadable > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
+            strict_errors.append(f"E_CONVERTED_TEXT_UNREADABLE: converted text unreadable ratio {converted_unreadable:.2%} exceeds strict threshold")
+        if converted_mojibake > CONVERSION_THRESHOLDS["garbage_ratio_strict"]:
+            strict_errors.append(f"E_CONVERTED_TEXT_MOJIBAKE: converted text mojibake ratio {converted_mojibake:.2%} exceeds strict threshold")
 
     # ── Cleaning quality ──────────────────────────────────────────
     total_blocks = len(blocks)
@@ -212,6 +233,8 @@ def run_quality_check(
     image_stats = _image_retention_stats(image_blocks, run_p)
     if image_stats["missing_file_count"] >= CONVERSION_THRESHOLDS["missing_image_file_strict"]:
         strict_errors.append(f"E_QA_FAILED: {image_stats['missing_file_count']} referenced image files are missing")
+    if image_stats.get("invalid_svg_count", 0) > 0:
+        strict_errors.append(f"E_QA_FAILED: {image_stats['invalid_svg_count']} SVG diagram files have invalid root dimensions")
 
     detail_stats = _detail_retention_stats(blocks)
     if detail_stats["discarded_detail_block_ids"]:
@@ -224,7 +247,7 @@ def run_quality_check(
     if output_stats["missing_total"] > 0:
         strict_errors.append(
             "E_QA_FAILED: "
-            f"{output_stats['missing_total']} kept detail signals missing from cleaned.md"
+            f"{output_stats['missing_total']} kept detail signals missing from final knowledge output"
         )
 
     # ── Build report ──────────────────────────────────────────────
@@ -261,8 +284,10 @@ def run_quality_check(
             "image_discarded": image_stats["discard_blocks"],
             "image_referenced_files": image_stats["referenced_file_count"],
             "image_missing_files": image_stats["missing_file_count"],
+            "image_invalid_svg_files": image_stats.get("invalid_svg_count", 0),
         },
         "detail_retention": detail_stats,
+        "source_text_layer": source_text_layer,
         "output_retention": output_stats,
         "image_retention": image_stats,
         "chunk_count": len(chunk_chars),
@@ -278,6 +303,54 @@ def run_quality_check(
     }
 
     return report
+
+
+def _read_json_file(path: Path) -> dict:
+    try:
+        if not path.exists():
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _source_text_layer_status(diagnosis: dict, conversion_report: dict) -> dict:
+    text_quality = diagnosis.get("text_quality", {})
+    converter = str(conversion_report.get("converter") or "")
+    superseded = _conversion_supersedes_source_text_layer(diagnosis, conversion_report)
+    return {
+        "text_layer_health": diagnosis.get("text_layer_health"),
+        "pdf_subtype": diagnosis.get("pdf_subtype"),
+        "needs_ocr": bool(diagnosis.get("needs_ocr")),
+        "converter": converter,
+        "superseded_by_conversion": superseded,
+        "garbled_ratio": text_quality.get("garbled_ratio", 0),
+        "unreadable_text_ratio": text_quality.get("unreadable_text_ratio", 0),
+        "mojibake_ratio": text_quality.get("mojibake_ratio", 0),
+    }
+
+
+def _conversion_supersedes_source_text_layer(diagnosis: dict, conversion_report: dict) -> bool:
+    converter = str(conversion_report.get("converter") or "")
+    converted_bytes = int(conversion_report.get("converted_bytes") or 0)
+    if converter not in {"mineru", "mineru_after_pdf_text_layer_fallback"}:
+        return False
+    if converted_bytes <= 0:
+        return False
+    return bool(
+        diagnosis.get("needs_ocr")
+        or diagnosis.get("pdf_subtype") == "garbled_text_layer"
+        or diagnosis.get("text_layer_health") in {"bad", "untrusted"}
+    )
+
+
+def _converted_text_quality(conversion_report: dict) -> dict:
+    artifacts = conversion_report.get("mineru_artifacts")
+    if not isinstance(artifacts, dict):
+        return {}
+    quality = artifacts.get("post_convert_text_quality")
+    return quality if isinstance(quality, dict) else {}
 
 
 def _allows_cta_keyword_context(block: dict) -> bool:
@@ -297,6 +370,18 @@ def _counts_for_text_coverage(block: dict) -> bool:
     if block.get("status") == "discard" and block_type in {
         "transcript_filler",
         "marketing_cta",
+        "marketing_wrapper",
+        "author_identity",
+        "author_intro",
+        "image_artifact",
+        "layout_table_artifact",
+        "layout_separator",
+        "author_profile_links",
+        "toc",
+        "toc_heading",
+        "empty_heading",
+        "back_matter",
+        "refund_policy",
         "footer",
         "qr_image",
         "empty",
@@ -313,6 +398,18 @@ def _counts_for_discard_ratio(block: dict) -> bool:
     if block.get("status") == "discard" and block_type in {
         "transcript_filler",
         "marketing_cta",
+        "marketing_wrapper",
+        "author_identity",
+        "author_intro",
+        "image_artifact",
+        "layout_table_artifact",
+        "layout_separator",
+        "author_profile_links",
+        "toc",
+        "toc_heading",
+        "empty_heading",
+        "back_matter",
+        "refund_policy",
         "footer",
         "qr_image",
         "empty",
@@ -329,6 +426,7 @@ def _image_retention_stats(image_blocks: list[dict], run_p: Path) -> dict:
     status_counts: dict[str, int] = {}
     referenced_files: list[str] = []
     missing_files: list[str] = []
+    invalid_svg_files: list[str] = []
     for block in image_blocks:
         status = block.get("status", "unclassified")
         status_counts[status] = status_counts.get(status, 0) + 1
@@ -338,8 +436,11 @@ def _image_retention_stats(image_blocks: list[dict], run_p: Path) -> dict:
             if _is_external_image(src):
                 continue
             referenced_files.append(src)
-            if not _resolve_image_path(run_p, src).exists():
+            resolved = _resolve_image_path(run_p, src)
+            if not resolved.exists():
                 missing_files.append(src)
+            elif resolved.suffix.lower() == ".svg" and not _is_valid_standalone_svg(resolved):
+                invalid_svg_files.append(src)
 
     return {
         "total_blocks": len(image_blocks),
@@ -350,6 +451,8 @@ def _image_retention_stats(image_blocks: list[dict], run_p: Path) -> dict:
         "referenced_file_count": len(referenced_files),
         "missing_file_count": len(missing_files),
         "missing_files": missing_files[:50],
+        "invalid_svg_count": len(invalid_svg_files),
+        "invalid_svg_files": invalid_svg_files[:50],
     }
 
 
@@ -371,6 +474,26 @@ def _resolve_image_path(run_p: Path, src: str) -> Path:
 
 def _is_markdown_image_only(text: str) -> bool:
     return bool(re.fullmatch(r"!\[[^\]]*\]\([^)]+\)", text))
+
+
+def _is_valid_standalone_svg(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return False
+    match = re.search(r"<svg\b([^>]*)>", text, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return False
+    attrs = match.group(1)
+    if re.search(r"\bviewbox\s*=", attrs):
+        return False
+    if not re.search(r'\bviewBox\s*=\s*"[^"]+"', attrs):
+        return False
+    if not re.search(r'\bwidth\s*=\s*"[^"]+"', attrs):
+        return False
+    if not re.search(r'\bheight\s*=\s*"[^"]+"', attrs):
+        return False
+    return True
 
 
 DETAIL_SIGNAL_PATTERNS = {
@@ -475,8 +598,47 @@ def _detail_categories(block: dict) -> set[str]:
 
 def _is_known_pollution_without_detail(block: dict, categories: set[str]) -> bool:
     block_type = block.get("type")
-    if block_type not in {"marketing_cta", "transcript_filler", "footer", "qr_image", "empty", "refund_policy"}:
+    if block_type not in {
+        "marketing_cta",
+        "marketing_wrapper",
+        "author_identity",
+        "author_intro",
+        "image_artifact",
+        "layout_table_artifact",
+        "layout_separator",
+        "author_profile_links",
+        "toc",
+        "toc_heading",
+        "empty_heading",
+        "back_matter",
+        "transcript_filler",
+        "footer",
+        "qr_image",
+        "empty",
+        "refund_policy",
+    }:
         return False
+    if block_type in {
+        "author_identity",
+        "author_intro",
+        "author_profile_links",
+        "image_artifact",
+        "layout_table_artifact",
+        "layout_separator",
+        "toc",
+        "toc_heading",
+        "empty_heading",
+    }:
+        return True
+    if block_type == "marketing_wrapper" and any(
+        tag in block.get("risk_tags", [])
+        for tag in [
+            "drop_packaging_context_for_text_kb",
+            "drop_packaging_heading_for_text_kb",
+            "drop_brand_program_packaging_for_text_kb",
+        ]
+    ):
+        return True
     if block_type == "marketing_cta" and "promotional_line" in block.get("risk_tags", []):
         return True
     return not STRICT_DETAIL_CATEGORIES.intersection(categories)
@@ -485,6 +647,8 @@ def _is_known_pollution_without_detail(block: dict, categories: set[str]) -> boo
 def _output_retention_stats(blocks: list[dict], run_p: Path) -> dict:
     cleaned_path = run_p / "cleaned.md"
     cleaned_text = cleaned_path.read_text(encoding="utf-8") if cleaned_path.exists() else ""
+    primary_path = _primary_final_output_path(run_p, cleaned_path)
+    primary_text = primary_path.read_text(encoding="utf-8") if primary_path.exists() else ""
     review_path = run_p / "review_needed.md"
     review_text = review_path.read_text(encoding="utf-8") if review_path.exists() else ""
     evidence_path = run_p / "evidence" / "marketing_pages.md"
@@ -494,30 +658,43 @@ def _output_retention_stats(blocks: list[dict], run_p: Path) -> dict:
     review_blocks = [block for block in blocks if block.get("status") == "review"]
     evidence_blocks = [block for block in blocks if block.get("status") == "evidence"]
 
+    primary_stats = _destination_output_retention(keep_blocks, primary_text, primary_path.exists())
     cleaned_stats = _destination_output_retention(keep_blocks, cleaned_text, cleaned_path.exists())
     review_stats = _destination_output_retention(review_blocks, review_text, review_path.exists())
     evidence_stats = _destination_output_retention(evidence_blocks, evidence_text, evidence_path.exists())
 
     stats = {
         "checked_blocks": len(keep_blocks) + len(review_blocks) + len(evidence_blocks),
+        "primary_output_path": str(primary_path),
         "cleaned_md_exists": cleaned_path.exists(),
         "review_needed_md_exists": review_path.exists(),
         "evidence_md_exists": evidence_path.exists(),
+        "primary_output": {
+            "path": str(primary_path),
+            **primary_stats,
+        },
         "cleaned_md": cleaned_stats,
         "review_needed_md": review_stats,
         "evidence_md": evidence_stats,
     }
     stats["missing_total"] = (
-        cleaned_stats["missing_total"]
+        primary_stats["missing_total"]
         + review_stats["missing_total"]
         + evidence_stats["missing_total"]
     )
-    # Backward-compatible aliases for callers that only care about cleaned.md.
-    stats["link"] = cleaned_stats["link"]
-    stats["parameter"] = cleaned_stats["parameter"]
-    stats["code"] = cleaned_stats["code"]
-    stats["table"] = cleaned_stats["table"]
+    # Backward-compatible aliases for callers that only care about the primary final output.
+    stats["link"] = primary_stats["link"]
+    stats["parameter"] = primary_stats["parameter"]
+    stats["code"] = primary_stats["code"]
+    stats["table"] = primary_stats["table"]
     return stats
+
+
+def _primary_final_output_path(run_p: Path, cleaned_path: Path) -> Path:
+    obsidian_complete = run_p / "obsidian" / "01-完整正文.md"
+    if obsidian_complete.exists():
+        return obsidian_complete
+    return cleaned_path
 
 
 def _destination_output_retention(blocks: list[dict], target_text: str, target_exists: bool) -> dict:

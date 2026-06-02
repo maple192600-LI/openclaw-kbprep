@@ -39,6 +39,7 @@ TOP_LEVEL_DIRS = [
     "runs",
     "parts",
     "images",
+    "obsidian",
     "files",
 ]
 

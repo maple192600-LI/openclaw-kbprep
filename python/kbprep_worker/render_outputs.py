@@ -9,7 +9,14 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def render(blocks: list[dict], run_dir: str, source_hash: str, run_id: str) -> None:
+def render(
+    blocks: list[dict],
+    run_dir: str,
+    source_hash: str,
+    run_id: str,
+    profile: str = "standard",
+    source_title: str | None = None,
+) -> None:
     """
     Render output files from classified blocks.
     - cleaned.md: blocks with status=keep
@@ -73,6 +80,16 @@ def render(blocks: list[dict], run_dir: str, source_hash: str, run_id: str) -> N
         review_path.write_text("", encoding="utf-8")
 
     _render_parts(keep_blocks, run_p)
+
+    if profile == "curated_obsidian_kb":
+        from .obsidian_kb import render_obsidian_vault
+        render_obsidian_vault(
+            blocks=blocks,
+            run_dir=run_dir,
+            source_title=source_title or run_p.name,
+            source_hash=source_hash,
+            run_id=run_id,
+        )
 
     logger.info("Rendered: cleaned=%d blocks, discarded=%d, evidence=%d, review=%d",
                 len(keep_blocks), len(discard_blocks), len(evidence_blocks), len(review_blocks))
@@ -147,7 +164,7 @@ def _render_parts(keep_blocks: list[dict], run_p: Path) -> None:
 
 def _readable_text(block: dict) -> str:
     """Return text intended for human-readable Markdown outputs."""
-    text = block.get("text", "").strip()
+    text = (block.get("curated_text") or block.get("text") or "").strip()
     if _is_internal_page_marker(text):
         return ""
     return text

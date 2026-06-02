@@ -4,7 +4,7 @@ OpenClaw plugin for converting local raw source files into clean Markdown for Ob
 
 The plugin focuses on preparation only: detect file type, convert as losslessly as possible, split by content structure, remove pollution, preserve concrete knowledge details, and keep discarded/review material traceable.
 
-It does not build a RAG index, generate wiki pages, or download from remote platforms.
+It does not build a RAG index or download from remote platforms. By default it uses `profile="curated_obsidian_kb"` and renders an Obsidian-ready wiki folder from the cleaned blocks. Use `profile="standard"` only when you explicitly want a broad cleaned Markdown file instead of knowledge-base curation.
 
 ![KB Prep Tool showcase](docs/showcase-preview.png)
 
@@ -35,10 +35,29 @@ Expected output:
 - `blocks.jsonl`: content blocks in original order
 - `cleaned.md`: final readable Markdown
 - source-side final Markdown: a direct-use `.md` file next to the source file, named from the source file stem
+- `obsidian/`: text-first Obsidian wiki folder with full text, topic notes, and audit files
 - `discarded.md`: removed pollution with reasons
 - `review_needed.md`: uncertain content for manual review
 - `images/`: copied local or embedded image assets referenced by the Markdown output
 - `quality_report.json`: retention and quality checks
+
+The default profile adds a second knowledge-base curation layer after ordinary cleaning. It removes author names in headings, author bios, identity wrappers, self-introductions, image-only artifacts, and obvious non-knowledge packaging while keeping method/case body text verbatim. It also writes an Obsidian-ready folder:
+
+```text
+kbprep_prepare(input_path, output_root, profile="curated_obsidian_kb")
+```
+
+- `obsidian/00-索引.md`: wiki entry point with links to generated notes
+- `obsidian/01-完整正文.md`: cleaned full text for reading/search
+- `obsidian/认知/`: concept and viewpoint notes
+- `obsidian/方法/`: workflow, method, tool, SOP, and prompt notes
+- `obsidian/案例/`: case-oriented notes
+- `obsidian/_audit/discarded.md`: removed material with block metadata and reasons
+- `obsidian/_audit/review_needed.md`: uncertain material for manual review
+- `obsidian/_audit/source-map.jsonl`: block-to-note trace map
+- `obsidian/_audit/cleaning-report.md`: curation summary
+
+The profile does not summarize or rewrite source body paragraphs. It may sanitize generated note titles and heading display text by removing author/name prefixes, but source knowledge paragraphs are either kept, removed into audit files, or marked for review.
 
 For daily use, the source-side final Markdown is the file to move into or keep in your knowledge base. For example, `OpenClaw橙皮书.pdf` publishes `OpenClaw橙皮书.md` beside the source file. If the source itself is already Markdown, the plugin publishes `name.cleaned.md` instead of overwriting the original note. Image assets for that final file are copied beside the source as `name.assets/`.
 
@@ -113,6 +132,8 @@ PDF routing is staged. Trusted text-layer PDFs and PPT-exported PDFs with a heal
 For trusted PDF text layers, the converter also unwraps common hard line breaks inside Chinese paragraphs, so PDF layout wraps such as split words or mid-sentence line breaks do not become broken Markdown paragraphs. Structural lines such as titles, lists, code fences, tables, and page markers remain separate.
 
 Some PDFs contain an embedded text layer that exists but is not readable because of custom font encoding. Diagnosis treats high replacement-character or non-common-Unicode ratios as an untrusted garbled text layer and routes those files to MinerU/OCR instead of publishing broken Markdown.
+
+Once OCR or another converter supersedes an unreadable source text layer, final quality gates judge the converted output and the rendered knowledge-base files, not the rejected source text layer. In `curated_obsidian_kb` mode the Obsidian folder is the deliverable; `latest_outputs.final_md` is intentionally `null` so callers do not copy an intermediate `cleaned.md` as the final wiki note.
 
 If a PDF looks trustworthy during diagnosis but the later text-layer conversion still produces unreadable Markdown, `kbprep_prepare` automatically saves that rejected text-layer output as `converted.pdf_text_layer.rejected.md`, reruns MinerU in OCR mode, and records `W_PDF_TEXT_LAYER_FALLBACK_TO_OCR` in `conversion_report.json`.
 

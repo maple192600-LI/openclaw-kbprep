@@ -63,7 +63,7 @@ def _stderr_log(level: str, stage: str, message: str, code: str = "") -> None:
 def run(data: dict) -> None:
     input_path = data["input_path"]
     output_root = data.get("output_root", ".")
-    profile = data.get("profile", "standard")
+    profile = data.get("profile", "curated_obsidian_kb")
     mode = data.get("mode", "rules_only")
     force = data.get("force", False)
     language = data.get("language", "zh")
@@ -123,7 +123,7 @@ def run(data: dict) -> None:
             existing = _find_existing_run(root_p, file_hash, config_hash, plugin_version, runtime_cache_key)
             if existing:
                 _stderr_log("info", "original_preserve", f"Skipping: matching run {existing['run_id']}")
-                latest_outputs = _publish_latest_outputs(Path(existing["run_dir"]), root_p, input_p)
+                latest_outputs = _publish_latest_outputs(Path(existing["run_dir"]), root_p, input_p, profile)
                 ok(data={
                     "ok": True,
                     "run_id": existing["run_id"],
@@ -181,8 +181,8 @@ def run(data: dict) -> None:
         office_xml_exts = OFFICE_XML_EXTENSIONS
 
         if ext in direct_exts:
-            text = _read_direct_source(input_p)
-            if ext in MARKDOWN_EXTENSIONS | HTML_EXTENSIONS:
+            text = _read_direct_source(input_p, run_dir=run_dir)
+            if ext in MARKDOWN_EXTENSIONS:
                 text, local_image_artifacts = _copy_local_markdown_image_assets(
                     text=text,
                     input_path=input_p,
@@ -327,6 +327,15 @@ def run(data: dict) -> None:
             _stderr_log("warn", "image_clean", str(e))
             warnings.append(f"Image classification failed: {e}")
 
+        if profile == "curated_obsidian_kb":
+            _stderr_log("info", "curated_obsidian_kb", "Applying curated Obsidian knowledge-base policy")
+            from . import obsidian_kb as obsidian_mod
+            blocks = obsidian_mod.apply_curated_obsidian_policy(blocks)
+            with open(blocks_path, "w", encoding="utf-8") as f:
+                for block in blocks:
+                    f.write(json.dumps(block, ensure_ascii=False) + "\n")
+            _stderr_log("info", "curated_obsidian_kb", "Curated Obsidian policy applied")
+
         if mode == "rules_plus_review_pack":
             _stderr_log("info", "review_pack", "Generating review pack")
             _generate_review_pack(blocks, run_dir, source_type)
@@ -338,6 +347,8 @@ def run(data: dict) -> None:
             run_dir=str(run_dir),
             source_hash=file_hash,
             run_id=run_id,
+            profile=profile,
+            source_title=_source_title_for_render(input_p, converted_path),
         )
         _stderr_log("info", "render_outputs", "Output files rendered")
         # Stage 11: split
@@ -433,9 +444,9 @@ def run(data: dict) -> None:
     except Exception as e:
         _stderr_log("warn", "audit", f"Failed to generate audit.md: {e}")
     # Update latest.json
-    latest_outputs = _latest_output_paths(root_p, input_p)
+    latest_outputs = _latest_output_paths(root_p, input_p, profile)
     if not strict_errors:
-        latest_outputs = _publish_latest_outputs(run_dir, root_p, input_p)
+        latest_outputs = _publish_latest_outputs(run_dir, root_p, input_p, profile)
         _apply_artifact_policy(root_p, run_dir, artifact_policy)
         latest_file.write_text(json.dumps({
             "source_sha256": file_hash,
@@ -468,6 +479,8 @@ def run(data: dict) -> None:
         "chunks_dir": str(chunks_dir),
         "parts_dir": str(run_dir / "parts"),
         "images_dir": str(run_dir / "images"),
+        "obsidian_dir": str(run_dir / "obsidian") if (run_dir / "obsidian").exists() else None,
+        "obsidian_index": str(run_dir / "obsidian" / "00-索引.md") if (run_dir / "obsidian" / "00-索引.md").exists() else None,
         "review_pack": str(run_dir / "review_pack.json") if (run_dir / "review_pack.json").exists() else None,
     }
     if strict_errors:
@@ -498,17 +511,21 @@ def run(data: dict) -> None:
     }, warnings=warnings)
 
 
-def _latest_output_paths(root_p: Path, input_p: Path | None = None) -> dict:
+def _latest_output_paths(root_p: Path, input_p: Path | None = None, profile: str = "standard") -> dict:
     """Return stable top-level paths for the latest successful run."""
-    final_md = _source_final_markdown_path(input_p) if input_p else root_p / "cleaned.md"
-    final_assets_dir = _source_final_assets_dir(input_p) if input_p else root_p / "images"
+    source_side_final = profile != "curated_obsidian_kb"
+    final_md = (_source_final_markdown_path(input_p) if input_p else root_p / "cleaned.md") if source_side_final else None
+    final_assets_dir = (_source_final_assets_dir(input_p) if input_p else root_p / "images") if source_side_final else None
+    obsidian_dir = root_p / "obsidian"
+    obsidian_index = obsidian_dir / "00-索引.md"
+    review_pack = root_p / "review_pack.json"
     return {
         "converted_md": str(root_p / "converted.md"),
         "diagnosis_report": str(root_p / "diagnosis_report.json"),
         "blocks_jsonl": str(root_p / "blocks.jsonl"),
         "cleaned_md": str(root_p / "cleaned.md"),
-        "final_md": str(final_md),
-        "final_assets_dir": str(final_assets_dir),
+        "final_md": str(final_md) if final_md else None,
+        "final_assets_dir": str(final_assets_dir) if final_assets_dir else None,
         "discarded_md": str(root_p / "discarded.md"),
         "review_needed_md": str(root_p / "review_needed.md"),
         "quality_report": str(root_p / "quality_report.json"),
@@ -516,7 +533,9 @@ def _latest_output_paths(root_p: Path, input_p: Path | None = None) -> dict:
         "audit_md": str(root_p / "audit.md"),
         "parts_dir": str(root_p / "parts"),
         "images_dir": str(root_p / "images"),
-        "review_pack": str(root_p / "review_pack.json"),
+        "obsidian_dir": str(obsidian_dir) if obsidian_dir.exists() else None,
+        "obsidian_index": str(obsidian_index) if obsidian_index.exists() else None,
+        "review_pack": str(review_pack) if review_pack.exists() else None,
     }
 
 
@@ -629,7 +648,7 @@ def _write_error_report_from_context(
         }
 
 
-def _publish_latest_outputs(run_dir: Path, root_p: Path, input_p: Path) -> dict:
+def _publish_latest_outputs(run_dir: Path, root_p: Path, input_p: Path, profile: str = "standard") -> dict:
     """Copy successful run artifacts to output_root for direct reading."""
     root_p.mkdir(parents=True, exist_ok=True)
     for name in [
@@ -651,7 +670,8 @@ def _publish_latest_outputs(run_dir: Path, root_p: Path, input_p: Path) -> dict:
         elif dst.exists() and name == "review_pack.json":
             dst.unlink()
 
-    _publish_direct_final_to_source(run_dir, input_p)
+    if profile != "curated_obsidian_kb":
+        _publish_direct_final_to_source(run_dir, input_p)
 
     src_parts = run_dir / "parts"
     dst_parts = root_p / "parts"
@@ -671,7 +691,26 @@ def _publish_latest_outputs(run_dir: Path, root_p: Path, input_p: Path) -> dict:
     else:
         dst_images.mkdir(parents=True, exist_ok=True)
 
-    return _latest_output_paths(root_p, input_p)
+    src_obsidian = run_dir / "obsidian"
+    dst_obsidian = root_p / "obsidian"
+    if dst_obsidian.exists():
+        shutil.rmtree(dst_obsidian)
+    if src_obsidian.exists():
+        shutil.copytree(src_obsidian, dst_obsidian)
+
+    return _latest_output_paths(root_p, input_p, profile)
+
+
+def _source_title_for_render(input_p: Path, converted_path: Path) -> str:
+    if input_p.suffix.lower() in HTML_EXTENSIONS and converted_path.exists():
+        try:
+            for line in converted_path.read_text(encoding="utf-8").splitlines():
+                match = re.match(r"^#\s+(.+?)\s*$", line)
+                if match:
+                    return match.group(1).strip()
+        except Exception:
+            pass
+    return input_p.stem
 
 
 def _publish_direct_final_to_source(run_dir: Path, input_p: Path) -> None:
@@ -1034,10 +1073,10 @@ def _maybe_fallback_pdf_text_layer_to_mineru(
     text_layer_artifacts: dict,
 ) -> dict | None:
     text = converted_path.read_text(encoding="utf-8") if converted_path.exists() else ""
-    quality = _converted_text_quality(text)
-    text_layer_artifacts["post_convert_text_quality"] = quality
+    rejected_quality = _converted_text_quality(text)
+    text_layer_artifacts["post_convert_text_quality"] = rejected_quality
 
-    if not _pdf_text_layer_output_needs_ocr(quality):
+    if not _pdf_text_layer_output_needs_ocr(rejected_quality):
         return None
 
     rejected_path = run_dir / "converted.pdf_text_layer.rejected.md"
@@ -1054,13 +1093,15 @@ def _maybe_fallback_pdf_text_layer_to_mineru(
     fallback["fallback_from"] = "pdf_text_layer"
     fallback["fallback_reason"] = "post_convert_text_unreadable"
     fallback["rejected_text_layer_md"] = str(rejected_path)
-    fallback["post_convert_text_quality"] = quality
+    fallback["rejected_text_layer_quality"] = rejected_quality
+    ocr_text = converted_path.read_text(encoding="utf-8") if converted_path.exists() else ""
+    fallback["post_convert_text_quality"] = _converted_text_quality(ocr_text)
     fallback["warnings"] = [
         *fallback.get("warnings", []),
         (
             "W_PDF_TEXT_LAYER_FALLBACK_TO_OCR: text-layer conversion produced unreadable Markdown "
-            f"(unreadable={quality.get('unreadable_text_ratio', 0):.2%}, "
-            f"garbled={quality.get('garbled_ratio', 0):.2%}); reran MinerU in OCR mode."
+            f"(unreadable={rejected_quality.get('unreadable_text_ratio', 0):.2%}, "
+            f"garbled={rejected_quality.get('garbled_ratio', 0):.2%}); reran MinerU in OCR mode."
         ),
     ]
     return fallback
@@ -1448,13 +1489,13 @@ def _read_with_fallback(path: Path) -> str:
     raise ValueError(f"Cannot decode {path.name}")
 
 
-def _read_direct_source(path: Path) -> str:
+def _read_direct_source(path: Path, run_dir: Path | None = None) -> str:
     text = _read_with_fallback(path)
     ext = path.suffix.lower()
     if ext in {".vtt", ".srt", ".ass", ".lrc"}:
         return _normalize_subtitle_transcript(text)
     if ext in {".html", ".htm"}:
-        return _html_to_markdown(text)
+        return _html_to_markdown(text, run_dir=run_dir, source_stem=path.stem, source_root=path.parent)
     if ext == ".json":
         return _json_to_markdown(text)
     if ext in NOTEBOOK_EXTENSIONS:
@@ -1578,11 +1619,268 @@ class _HTMLToMarkdownParser(HTMLParser):
         return "\n\n".join(cleaned).strip() + "\n"
 
 
-def _html_to_markdown(text: str) -> str:
+def _html_to_markdown(
+    text: str,
+    run_dir: Path | None = None,
+    source_stem: str = "html",
+    source_root: Path | None = None,
+) -> str:
+    rich = _rich_html_to_markdown(text, run_dir=run_dir, source_stem=source_stem, source_root=source_root)
+    if rich.strip():
+        return rich
     parser = _HTMLToMarkdownParser()
     parser.feed(text)
     markdown = parser.markdown()
     return markdown if markdown.strip() else re.sub(r"<[^>]+>", "", text).strip() + "\n"
+
+
+def _rich_html_to_markdown(
+    text: str,
+    run_dir: Path | None = None,
+    source_stem: str = "html",
+    source_root: Path | None = None,
+) -> str:
+    """Convert readable HTML pages while preserving tables, cards, and SVG diagrams.
+
+    Many saved course pages encode important knowledge as visual cards, tables,
+    and inline SVG diagrams. The small stdlib fallback intentionally stays simple,
+    but this richer path keeps the structure that makes those pages usable in
+    Obsidian.
+    """
+    try:
+        from bs4 import BeautifulSoup, NavigableString, Tag
+    except Exception:
+        return ""
+
+    soup = BeautifulSoup(text, "lxml")
+    for tag in soup(["script", "style", "noscript", "nav", "header", "footer", "button"]):
+        tag.decompose()
+
+    body = soup.body or soup.find("main") or soup
+    assets_dir = run_dir / "images" if run_dir else None
+    svg_counter = 0
+
+    def clean(value: str) -> str:
+        return re.sub(r"\s+", " ", value or "").strip()
+
+    page_title = clean(soup.title.get_text(" ", strip=True)) if soup.title else ""
+    asset_stem = page_title or source_stem
+
+    def inline(node) -> str:
+        if isinstance(node, NavigableString):
+            return clean(str(node))
+        if not isinstance(node, Tag):
+            return ""
+        name = node.name.lower()
+        if name in {"script", "style", "noscript", "svg"}:
+            return ""
+        if name == "br":
+            return "  \n"
+        if name in {"strong", "b"}:
+            inner = clean(" ".join(inline(c) for c in node.children))
+            return f"**{inner}**" if inner else ""
+        if name in {"em", "i"}:
+            inner = clean(" ".join(inline(c) for c in node.children))
+            return f"*{inner}*" if inner else ""
+        if name == "code":
+            inner = node.get_text("", strip=True)
+            return f"`{inner}`" if inner else ""
+        if name == "a":
+            href = clean(node.get("href", ""))
+            label = clean(" ".join(inline(c) for c in node.children)) or clean(node.get_text(" ", strip=True)) or href
+            return f"[{label}]({href})" if href else label
+        if name == "img":
+            alt = clean(node.get("alt") or node.get("title") or "")
+            src = clean(node.get("src", ""))
+            if not src:
+                return alt
+            if src.startswith("assets/logos/"):
+                return alt
+            rewritten = copy_html_image(src)
+            return f"![{alt}]({rewritten or src})"
+        return clean(" ".join(inline(c) for c in node.children))
+
+    def table_to_md(table: Tag) -> str:
+        rows: list[list[str]] = []
+        for tr in table.find_all("tr"):
+            cells = tr.find_all(["th", "td"], recursive=False)
+            if cells:
+                rows.append([clean(cell.get_text(" ", strip=True)).replace("|", "\\|") for cell in cells])
+        if not rows:
+            return ""
+        width = max(len(row) for row in rows)
+        rows = [row + [""] * (width - len(row)) for row in rows]
+        header, body_rows = rows[0], rows[1:]
+        lines = [
+            "| " + " | ".join(header) + " |",
+            "| " + " | ".join(["---"] * width) + " |",
+        ]
+        for row in body_rows:
+            lines.append("| " + " | ".join(row) + " |")
+        return "\n".join(lines)
+
+    def copy_html_image(src: str) -> str | None:
+        if not source_root or not assets_dir or _is_nonlocal_markdown_image(src):
+            return None
+        decoded = unquote(src).replace("\\", "/").split("?", 1)[0].split("#", 1)[0]
+        if not _looks_like_image_reference(decoded):
+            return None
+        source_path = (source_root / decoded).resolve()
+        try:
+            rel = source_path.relative_to(source_root)
+        except ValueError:
+            return None
+        if not source_path.is_file():
+            return None
+        safe_parts = [part for part in rel.parts if part not in {"", ".", ".."}]
+        if not safe_parts:
+            return None
+        target_path = assets_dir / Path(*safe_parts)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if not target_path.exists():
+            shutil.copy2(str(source_path), str(target_path))
+        return "images/" + Path(*safe_parts).as_posix()
+
+    def svg_to_md(svg: Tag) -> str:
+        nonlocal svg_counter
+        label = clean(svg.get("aria-label") or "")
+        title = svg.find("title")
+        desc = svg.find("desc")
+        if not label and title:
+            label = clean(title.get_text(" ", strip=True))
+        if not label and desc:
+            label = clean(desc.get_text(" ", strip=True))
+        label = label or "HTML diagram"
+        if not assets_dir:
+            visible_text = clean(svg.get_text(" ", strip=True))
+            return f"> [!info] {label}\n> {visible_text}" if visible_text else f"> [!info] {label}"
+        svg_counter += 1
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        safe_stem = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff._-]+", "-", asset_stem).strip(".-_") or "html"
+        filename = f"{safe_stem}-diagram-{svg_counter:02d}.svg"
+        svg_text = _standalone_svg_text(svg)
+        (assets_dir / filename).write_text(svg_text, encoding="utf-8")
+        return f"![{label}](images/{filename})"
+
+    def block(node, depth: int = 0) -> list[str]:
+        if isinstance(node, NavigableString):
+            text_value = clean(str(node))
+            return [text_value] if text_value else []
+        if not isinstance(node, Tag):
+            return []
+        name = node.name.lower()
+        if name in {"script", "style", "noscript", "nav", "header", "footer", "button"}:
+            return []
+        if name in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+            heading = inline(node)
+            return [f"{'#' * int(name[1])} {heading}"] if heading else []
+        if name in {"p", "blockquote"}:
+            paragraph = inline(node)
+            if not paragraph:
+                return []
+            if name == "blockquote" or "quote" in (node.get("class") or []):
+                return ["> " + paragraph]
+            return [paragraph]
+        if name == "svg":
+            return [svg_to_md(node)]
+        if name == "table":
+            table_md = table_to_md(node)
+            return [table_md] if table_md else []
+        if name in {"ul", "ol"}:
+            lines: list[str] = []
+            ordered = name == "ol"
+            for idx, li in enumerate(node.find_all("li", recursive=False), start=1):
+                li_text = inline(li)
+                if li_text:
+                    prefix = f"{idx}. " if ordered else "- "
+                    lines.append(prefix + li_text)
+            return ["\n".join(lines)] if lines else []
+        if name == "li":
+            li_text = inline(node)
+            return [f"- {li_text}"] if li_text else []
+        if name == "img":
+            image = inline(node)
+            return [image] if image else []
+        if name in {"div", "main", "body", "html"}:
+            classes = set(node.get("class") or [])
+            lines: list[str] = []
+            if "card" in classes or "case-card" in classes:
+                title = None
+                for heading_tag in ["h3", "h4"]:
+                    found = node.find(heading_tag)
+                    if found:
+                        title = inline(found)
+                        break
+                if title:
+                    lines.append(f"#### {title}")
+            for child in node.children:
+                if isinstance(child, Tag) and "card" in classes and child.name and child.name.lower() in {"h3", "h4"}:
+                    continue
+                lines.extend(block(child, depth + 1))
+            return lines
+        if name in {"span", "strong", "b", "em", "i", "a", "code"}:
+            value = inline(node)
+            return [value] if value else []
+        lines: list[str] = []
+        for child in node.children:
+            lines.extend(block(child, depth + 1))
+        return lines
+
+    lines = block(body)
+    cleaned: list[str] = []
+    previous = ""
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line == previous:
+            continue
+        cleaned.append(line)
+        previous = line
+    return "\n\n".join(cleaned).strip() + ("\n" if cleaned else "")
+
+
+def _standalone_svg_text(svg) -> str:
+    """Serialize an inline HTML SVG as a valid standalone SVG asset."""
+    if "viewBox" not in svg.attrs and "viewbox" in svg.attrs:
+        svg["viewBox"] = svg.attrs.pop("viewbox")
+
+    view_box = str(svg.get("viewBox") or "").strip()
+    view_box_numbers = _parse_svg_view_box(view_box)
+    if view_box_numbers:
+        _, _, width, height = view_box_numbers
+        root_width = str(svg.get("width") or "").strip()
+        root_height = str(svg.get("height") or "").strip()
+        if not root_width or root_width.endswith("%"):
+            svg["width"] = _format_svg_number(width)
+        if not root_height or root_height.endswith("%"):
+            svg["height"] = _format_svg_number(height)
+
+    if "preserveAspectRatio" not in svg.attrs:
+        svg["preserveAspectRatio"] = "xMidYMid meet"
+
+    svg_text = str(svg)
+    root_open = svg_text.split(">", 1)[0]
+    if "<svg" in svg_text and "xmlns=" not in root_open:
+        svg_text = svg_text.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"', 1)
+    return svg_text
+
+
+def _parse_svg_view_box(value: str) -> tuple[float, float, float, float] | None:
+    parts = re.split(r"[\s,]+", value.strip())
+    if len(parts) != 4:
+        return None
+    try:
+        numbers = tuple(float(part) for part in parts)
+    except ValueError:
+        return None
+    if numbers[2] <= 0 or numbers[3] <= 0:
+        return None
+    return numbers
+
+
+def _format_svg_number(value: float) -> str:
+    return str(int(value)) if value.is_integer() else str(value)
 
 
 def _json_to_markdown(text: str) -> str:
@@ -1750,6 +2048,8 @@ def _generate_review_pack(blocks: list[dict], run_dir: Path, source_type: str) -
             "Classify blocks only; never rewrite text.",
             "Prefer keep or review when a block may contain usable knowledge.",
             "Never discard steps, prompts, code, tables, tool names, numbers, parameters, links, or concrete examples.",
+            "For curated Obsidian use, discard pure author bios, usernames, self-introductions, credentials, and identity wrappers when they do not carry reusable knowledge.",
+            "If removing a block would break continuity, references, setup, or a later method/case, mark it review instead of discard.",
             "Return RFC 6902 JSON Patch operations against /blocks/<block_id>/<field>.",
         ],
         "blocks": candidates,

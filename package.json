@@ -1,6 +1,6 @@
 {
   "name": "openclaw-kbprep",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "OpenClaw source-to-clean-Markdown preparation plugin for Obsidian and LLM Wiki workflows.",
   "type": "module",
   "private": true,
@@ -9,7 +9,7 @@
     "docs:serve": "node scripts/serve-docs.mjs",
     "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
     "plugin:validate": "npm run build && openclaw plugins validate --entry ./dist/index.js",
-    "test": "vitest run"
+    "test": "vitest run --pool=vmThreads --maxWorkers=1 --minWorkers=1"
   },
   "files": [
     "dist",
