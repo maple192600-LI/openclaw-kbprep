@@ -14,7 +14,7 @@ export interface WorkerCallOptions {
     logDir?: string;
     config?: WorkerConfig;
 }
-interface WorkerConfig {
+export interface WorkerConfig {
     device_override?: "auto" | "cuda" | "cpu";
     max_cpu_threads?: number;
     min_free_memory_gb?: number;
@@ -26,4 +26,3 @@ interface WorkerConfig {
  * stderr: JSONL logs
  */
 export declare function callWorker<T = Record<string, unknown>>(command: string, input: Record<string, unknown>, options: WorkerCallOptions): Promise<WorkerResult<T>>;
-export {};

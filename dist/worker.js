@@ -32,7 +32,7 @@ export async function callWorker(command, input, options) {
     }
     env.PYTHONUTF8 = "1";
     env.PYTHONIOENCODING = "utf-8";
-    // Pass plugin config as env vars
+    // Pass worker runtime config as environment variables.
     if (options.config?.device_override && options.config.device_override !== "auto") {
         env.MINERU_DEVICE_MODE = options.config.device_override;
     }

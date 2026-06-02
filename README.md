@@ -1,10 +1,12 @@
 # KB Prep Tool
 
-OpenClaw plugin for converting local raw source files into clean Markdown for Obsidian or LLM Wiki workflows.
+KBPrep converts local raw source files into clean Markdown for Obsidian or LLM Wiki workflows. It is a toolkit with a Python worker core, a standalone Node CLI, and an OpenClaw adapter.
 
-The plugin focuses on preparation only: detect file type, convert as losslessly as possible, split by content structure, remove pollution, preserve concrete knowledge details, and keep discarded/review material traceable.
+KBPrep focuses on preparation only: detect file type, convert as losslessly as possible, split by content structure, remove pollution, preserve concrete knowledge details, and keep discarded/review material traceable.
 
 It does not build a RAG index or download from remote platforms. By default it uses `profile="curated_obsidian_kb"` and renders an Obsidian-ready wiki folder from the cleaned blocks. Use `profile="standard"` only when you explicitly want a broad cleaned Markdown file instead of knowledge-base curation.
+
+OpenClaw is one supported host adapter, not the project boundary. Non-OpenClaw users can call the same worker through the standalone CLI or the Python worker module.
 
 ![KB Prep Tool showcase](docs/showcase-preview.png)
 
@@ -26,6 +28,14 @@ Default entry:
 
 ```text
 kbprep_prepare(input_path, output_root)
+```
+
+Standalone CLI entry:
+
+```bash
+kbprep-analyze --input ./source.pdf
+kbprep-prepare --input ./source.pdf --output ./.kbprep/source
+kbprep-cleanup --output ./.kbprep/source --action finalize
 ```
 
 Expected output:
@@ -93,7 +103,7 @@ Batch mode is conservative with heavy conversion files: PDF, image, MOBI, and le
 `quality_report.json` includes `detail_retention`, a block-level retention inventory for operation steps, tools/platforms, parameters, links, prompts, code, tables, and numeric details. Discarding blocks that contain these concrete knowledge signals is treated as a strict QA failure unless they are known pollution with no detail signal.
 It also includes `output_retention`, which checks that links, parameter assignments, code blocks, and table blocks from kept/review/evidence blocks appear in their rendered destination: `cleaned.md`, `review_needed.md`, or `evidence/marketing_pages.md`. Missing rendered detail signals are strict QA failures.
 
-GitHub-style source and config files such as `.py`, `.js`, `.ts`, `.sh`, `.ps1`, `.sql`, `.yaml`, `.toml`, and `.ini` are handled as direct code inputs. The plugin wraps the original file in a fenced Markdown code block so code, parameters, links, and failure-handling details stay intact.
+GitHub-style source and config files such as `.py`, `.js`, `.ts`, `.sh`, `.ps1`, `.sql`, `.yaml`, `.toml`, and `.ini` are handled as direct code inputs. KBPrep wraps the original file in a fenced Markdown code block so code, parameters, links, and failure-handling details stay intact.
 
 Saved HTML pages are converted with visible headings, paragraphs, lists, links, and image references preserved. Local HTML images are copied into `images/` and rewritten to portable Markdown paths.
 
@@ -101,12 +111,12 @@ Jupyter notebooks (`.ipynb`) are handled as structured local source files. Markd
 
 ## Runtime Selection
 
-On first use, the plugin creates its own Python runtime at `.kbprep/venv` inside the plugin directory and installs the Python worker dependencies there. It does not install MinerU, torch, PyMuPDF, or other worker dependencies into system Python.
+On first use, KBPrep creates its own Python runtime at `.kbprep/venv` inside the package directory and installs the Python worker dependencies there. It does not install MinerU, torch, PyMuPDF, or other worker dependencies into system Python.
 
-The plugin always runs the worker through this plugin-local `.kbprep/venv` in normal OpenClaw use. `python_path` is only an optional bootstrap interpreter used to create that venv; it is not treated as the dependency runtime.
+KBPrep normally runs the worker through this KBPrep-local `.kbprep/venv`. `python_path` is only an optional bootstrap interpreter used to create that venv; it is not treated as the dependency runtime.
 
 The worker is also isolated from user-site packages (`PYTHONNOUSERSITE=1`), and MinerU is resolved only from the selected venv's `Scripts/` or `bin/` directory. A system-wide `mineru` on PATH is not used.
-When an NVIDIA driver is detected and the plugin-local torch is CPU-only, setup installs pinned CUDA wheels (`torch==2.8.0`, `torchvision==0.23.0`, cu126 index) into `.kbprep/venv` and then re-checks torch in a fresh Python process. Set plugin config `device_override="cpu"` to skip CUDA wheel installation.
+When an NVIDIA driver is detected and the KBPrep-local torch is CPU-only, setup installs pinned CUDA wheels (`torch==2.8.0`, `torchvision==0.23.0`, cu126 index) into `.kbprep/venv` and then re-checks torch in a fresh Python process. Set config `device_override="cpu"` to skip CUDA wheel installation.
 The worker dependency set pins MinerU `3.2.1` and PyMuPDF `1.27.2.3`. PyMuPDF powers the fast trusted PDF text-layer route; MinerU/OCR is used when diagnosis says the text layer is missing or unsafe.
 The setup result is written to `.kbprep/runtime-ready.json` so the selected Python path, CUDA action, and detected torch state are traceable.
 The ready marker includes the plugin version, selected Python path, worker dependency spec, and `device_override`. If any of those no longer match, the plugin deletes only its own `.kbprep/venv` and marker, then rebuilds the runtime instead of reusing a stale or wrong environment.
@@ -125,7 +135,7 @@ Run `kbprep_preflight` before heavy PDF/Office conversion and check:
 - `torch_device_count`
 - `mineru_device`
 
-If these fields show CPU torch but you expected GPU, the plugin-local `.kbprep/venv` was not prepared with CUDA torch. Re-run `kbprep_preflight` after setup, or delete `.kbprep/venv` and let the plugin rebuild it.
+If these fields show CPU torch but you expected GPU, the KBPrep-local `.kbprep/venv` was not prepared with CUDA torch. Re-run `kbprep_preflight` after setup, or delete `.kbprep/venv` and let KBPrep rebuild it.
 
 PDF routing is staged. Trusted text-layer PDFs and PPT-exported PDFs with a healthy text layer use the lightweight `pdf_text_layer` converter first, preserving page/slide order evidence without invoking MinerU. This path requires PyMuPDF in the selected Python environment. Scanned, image-heavy, garbled, legacy Office, MOBI, and image inputs still route to MinerU/OCR when diagnosis says the text layer is missing or unsafe.
 

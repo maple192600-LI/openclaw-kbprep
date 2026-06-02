@@ -15,6 +15,7 @@ __pycache__/
 # Local source materials and generated knowledge-prep outputs.
 /*.md
 !/README.md
+!/CHANGELOG.md
 *.pdf
 *.doc
 *.docx
