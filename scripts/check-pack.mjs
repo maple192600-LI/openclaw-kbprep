@@ -12,6 +12,8 @@ const requiredFiles = [
   "dist/adapters/standalone/bin/batch.js",
   "dist/runtime/pythonRuntime.js",
   "python/kbprep_worker/obsidian_kb.py",
+  "python/kbprep_worker/prepare_diagnosis.py",
+  "python/kbprep_worker/prepare_runtime.py",
   "skills/kbprep/SKILL.md",
   "docs/decoupling.md",
   "docs/risk-tags.md",

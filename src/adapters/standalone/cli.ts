@@ -145,14 +145,15 @@ export function buildCliPlan(command: StandaloneCommand, options: Record<string,
         timeoutMs: 120_000,
       };
     case "cleanup":
+      const cleanupDryRun = readBoolean(options, "dry_run", false);
       return {
         command,
         input: {
           output_root: requirePath(options, "output"),
-          action: readString(options, "action") ?? "finalize",
+          action: readString(options, "action") ?? (cleanupDryRun ? "all" : "finalize"),
           older_than_days: readNumber(options, "older_than_days", 7),
           confirm_review_needed: readBoolean(options, "confirm_review_needed", false),
-          dry_run: readBoolean(options, "dry_run", false),
+          dry_run: cleanupDryRun,
         },
         timeoutMs: 120_000,
       };
@@ -297,6 +298,7 @@ function readBoolean(options: Record<string, string | boolean>, key: string, fal
   if (typeof value === "string") {
     if (value === "true") return true;
     if (value === "false") return false;
+    throw new Error(`--${key.replace(/_/g, "-")} must be true or false.`);
   }
   return fallback;
 }

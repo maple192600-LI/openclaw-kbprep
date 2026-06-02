@@ -12,7 +12,6 @@ import csv
 import io
 import json
 import logging
-import os
 import posixpath
 import re
 import shutil
@@ -32,13 +31,22 @@ from .prepare_artifacts import (
     publish_latest_outputs as _publish_latest_outputs,
 )
 from .prepare_errors import write_error_report_from_context as _write_error_report_from_context
+from .prepare_diagnosis import (
+    source_title_for_render as _source_title_for_render,
+    write_diagnosis_report as _write_diagnosis_report,
+)
+from .prepare_runtime import (
+    check_env as _check_env,
+    get_mineru_version as _get_mineru_version,
+    mineru_timeout_seconds_from_env as _mineru_timeout_seconds_from_env,
+    runtime_cache_key as _runtime_cache_key,
+    runtime_snapshot as _runtime_snapshot,
+)
 from .supported_formats import (
     CODE_EXTENSIONS,
     CODE_LANGUAGE_BY_EXTENSION,
     DIRECT_EXTENSIONS,
     EPUB_EXTENSIONS,
-    FORMAT_BY_EXTENSION,
-    HTML_EXTENSIONS,
     IMAGE_EXTENSIONS,
     MARKDOWN_EXTENSIONS,
     MEDIA_EXTENSIONS,
@@ -515,154 +523,6 @@ def run(data: dict) -> None:
         "warnings": warnings,
         "strict_errors": strict_errors,
     }, warnings=warnings)
-
-
-def _write_diagnosis_report(
-    run_dir: Path,
-    input_path: Path,
-    file_hash: str,
-    source_type: str,
-    diagnosis: dict,
-    runtime: dict,
-    warnings: list[str],
-) -> None:
-    fallback = _diagnosis_fallback(input_path)
-    report = {
-        "schema": "kbprep.diagnosis_report.v1",
-        "input_file": input_path.name,
-        "input_extension": input_path.suffix.lower(),
-        "source_sha256": file_hash,
-        "source_type": source_type,
-        "detected_format": diagnosis.get("detected_format") or fallback["detected_format"],
-        "recommended_pipeline": diagnosis.get("recommended_pipeline") or fallback["recommended_pipeline"],
-        "conversion_strategy": diagnosis.get("conversion_strategy") or fallback["conversion_strategy"],
-        "split_strategy": diagnosis.get("split_strategy"),
-        "text_profile": diagnosis.get("text_profile"),
-        "text_layer_health": diagnosis.get("text_layer_health"),
-        "pdf_subtype": diagnosis.get("pdf_subtype"),
-        "layout_profile": diagnosis.get("layout_profile"),
-        "slide_like_score": diagnosis.get("slide_like_score"),
-        "needs_ocr": diagnosis.get("needs_ocr"),
-        "processing_hints": diagnosis.get("processing_hints", []),
-        "runtime": runtime,
-        "diagnosis": diagnosis,
-        "warnings": warnings,
-    }
-    (run_dir / "diagnosis_report.json").write_text(
-        json.dumps(report, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-
-
-def _diagnosis_fallback(input_path: Path) -> dict:
-    ext = input_path.suffix.lower()
-    detected_format = FORMAT_BY_EXTENSION.get(ext, "unknown")
-    if ext in DIRECT_EXTENSIONS:
-        strategy = "direct"
-    elif ext in OFFICE_XML_EXTENSIONS:
-        strategy = "office_xml"
-    elif ext in EPUB_EXTENSIONS:
-        strategy = "epub_xhtml"
-    elif ext in MEDIA_EXTENSIONS:
-        strategy = "provide_transcript_first"
-    else:
-        strategy = "mineru"
-    return {
-        "detected_format": detected_format,
-        "recommended_pipeline": strategy,
-        "conversion_strategy": strategy,
-    }
-
-
-def _source_title_for_render(input_p: Path, converted_path: Path) -> str:
-    if input_p.suffix.lower() in HTML_EXTENSIONS and converted_path.exists():
-        try:
-            for line in converted_path.read_text(encoding="utf-8").splitlines():
-                match = re.match(r"^#\s+(.+?)\s*$", line)
-                if match:
-                    return match.group(1).strip()
-        except Exception:
-            pass
-    return input_p.stem
-
-
-def _check_env(profile: str) -> list[str]:
-    warnings = []
-    if sys.version_info < (3, 10):
-        warnings.append("Python < 3.10 detected. Some features may not work.")
-    return warnings
-
-
-def _get_mineru_version() -> str:
-    try:
-        from .mineru_adapter import find_mineru
-        mineru = find_mineru()
-        r = subprocess.run([mineru, "--version"], capture_output=True, text=True, timeout=10)
-        if r.returncode == 0:
-            return r.stdout.strip().split()[-1]
-    except Exception:
-        pass
-    return "unknown"
-
-
-def _runtime_snapshot(mineru_version: str) -> dict:
-    runtime = {
-        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "python_executable": sys.executable,
-        "mineru_version": mineru_version,
-        "mineru_path": None,
-        "torch": "not installed",
-        "torch_cuda_available": False,
-        "torch_cuda_version": "not installed",
-        "torch_device_count": 0,
-        "mineru_device": "unknown",
-    }
-    try:
-        from .mineru_adapter import find_mineru
-        runtime["mineru_path"] = find_mineru()
-    except Exception:
-        pass
-    try:
-        import torch
-        runtime["torch"] = str(torch.__version__)
-        runtime["torch_cuda_available"] = bool(torch.cuda.is_available())
-        runtime["torch_cuda_version"] = torch.version.cuda or "none"
-        runtime["torch_device_count"] = int(torch.cuda.device_count())
-        if torch.cuda.is_available():
-            runtime["gpu_name"] = torch.cuda.get_device_name(0)
-    except Exception:
-        pass
-    try:
-        from .setup_env import detect_device
-        runtime["mineru_device"] = detect_device()
-    except Exception:
-        pass
-    return runtime
-
-
-def _runtime_cache_key(runtime: dict) -> str:
-    """Build a stable cache key for outputs that can change with runtime selection."""
-    identity = {
-        "python_executable": runtime.get("python_executable"),
-        "mineru_path": runtime.get("mineru_path"),
-        "mineru_version": runtime.get("mineru_version"),
-        "torch": runtime.get("torch"),
-        "torch_cuda_available": runtime.get("torch_cuda_available"),
-        "torch_cuda_version": runtime.get("torch_cuda_version"),
-        "mineru_device": runtime.get("mineru_device"),
-    }
-    payload = json.dumps(identity, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
-
-
-def _mineru_timeout_seconds_from_env() -> int | None:
-    raw = os.environ.get("KBPREP_MINERU_TIMEOUT_SECONDS", "").strip()
-    if not raw:
-        return None
-    try:
-        return int(float(raw))
-    except ValueError:
-        return None
 
 
 def _validate_convertible_container(input_p: Path) -> None:
