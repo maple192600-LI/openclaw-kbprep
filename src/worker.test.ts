@@ -722,6 +722,58 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("treats a broken PDF text layer as superseded after OCR conversion succeeds", () => {
+    runPython(
+      [
+        "from pathlib import Path",
+        "import json, tempfile",
+        "from kbprep_worker.quality import run_quality_check",
+        "run_dir = Path(tempfile.mkdtemp())",
+        "(run_dir / 'chunks').mkdir()",
+        "(run_dir / 'chunks' / 'chunk_001.md').write_text('Reusable method body. ' * 80, encoding='utf-8')",
+        "(run_dir / 'cleaned.md').write_text('Reusable method body. ' * 80, encoding='utf-8')",
+        "(run_dir / 'conversion_report.json').write_text(json.dumps({'converter': 'mineru', 'converted_bytes': 2048}), encoding='utf-8')",
+        "blocks = [{'block_id': 'body1', 'status': 'keep', 'type': 'paragraph', 'text': 'Reusable method body. ' * 80}]",
+        "diagnosis = {",
+        "  'file_id': 'garbled-pdf',",
+        "  'needs_ocr': True,",
+        "  'pdf_subtype': 'garbled_text_layer',",
+        "  'text_layer_health': 'bad',",
+        "  'text_quality': {'garbled_ratio': 0.12, 'unreadable_text_ratio': 0.6281, 'mojibake_ratio': 0.0},",
+        "}",
+        "report = run_quality_check(blocks, str(run_dir), 'pdf_like', diagnosis)",
+        "assert report['source_text_layer']['superseded_by_conversion'] is True, report",
+        "assert not any(err.startswith('E_TEXT_LAYER_') for err in report['strict_errors']), report",
+        "assert any('W_SOURCE_TEXT_LAYER_SUPERSEDED' in warn for warn in report['warnings']), report",
+      ].join("\n"),
+      [],
+    );
+  });
+
+  it("still fails unreadable PDF text layer when no OCR conversion superseded it", () => {
+    runPython(
+      [
+        "from pathlib import Path",
+        "import json, tempfile",
+        "from kbprep_worker.quality import run_quality_check",
+        "run_dir = Path(tempfile.mkdtemp())",
+        "(run_dir / 'chunks').mkdir()",
+        "(run_dir / 'chunks' / 'chunk_001.md').write_text('Reusable method body. ' * 80, encoding='utf-8')",
+        "(run_dir / 'cleaned.md').write_text('Reusable method body. ' * 80, encoding='utf-8')",
+        "(run_dir / 'conversion_report.json').write_text(json.dumps({'converter': 'pdf_text_layer', 'converted_bytes': 2048}), encoding='utf-8')",
+        "blocks = [{'block_id': 'body1', 'status': 'keep', 'type': 'paragraph', 'text': 'Reusable method body. ' * 80}]",
+        "diagnosis = {",
+        "  'file_id': 'bad-text-layer',",
+        "  'needs_ocr': False,",
+        "  'text_quality': {'garbled_ratio': 0.0, 'unreadable_text_ratio': 0.6281, 'mojibake_ratio': 0.0},",
+        "}",
+        "report = run_quality_check(blocks, str(run_dir), 'pdf_like', diagnosis)",
+        "assert any(err.startswith('E_TEXT_LAYER_UNREADABLE') for err in report['strict_errors']), report",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("fails quality when CTA pollution remains in kept body blocks", () => {
     runPython(
       [
@@ -796,7 +848,33 @@ describe("kbprep worker pipeline", () => {
         "assert retention['link']['missing'] == ['https://example.com/config'], retention",
         "assert 'threshold=0.82' in retention['parameter']['missing'], retention",
         "assert retention['code']['missing_count'] == 1, retention",
-        "assert any('kept detail signals missing from cleaned.md' in err for err in report['strict_errors']), report",
+        "assert any('kept detail signals missing from final knowledge output' in err for err in report['strict_errors']), report",
+      ].join("\n"),
+      [],
+    );
+  });
+
+  it("checks curated Obsidian complete正文 as the primary final output", () => {
+    runPython(
+      [
+        "from pathlib import Path",
+        "import tempfile",
+        "from kbprep_worker.quality import run_quality_check",
+        "run_dir = Path(tempfile.mkdtemp())",
+        "(run_dir / 'chunks').mkdir()",
+        "(run_dir / 'obsidian').mkdir()",
+        "(run_dir / 'chunks' / 'chunk_001.md').write_text('Method body. ' * 120, encoding='utf-8')",
+        "(run_dir / 'cleaned.md').write_text('Step 1: configure threshold=0.82 and visit https://example.com/config.\\n```python\\nretry_count = 3\\n```\\n', encoding='utf-8')",
+        "(run_dir / 'obsidian' / '01-完整正文.md').write_text('Step 1: configure the dashboard.\\n', encoding='utf-8')",
+        "blocks = [",
+        "  {'block_id': 'step1', 'status': 'keep', 'type': 'operation_step', 'text': 'Step 1: configure threshold=0.82 and visit https://example.com/config.', 'protected': True},",
+        "  {'block_id': 'code1', 'status': 'keep', 'type': 'code', 'text': '```python\\nretry_count = 3\\n```', 'protected': True},",
+        "]",
+        "report = run_quality_check(blocks, str(run_dir), 'markdown_note', {'file_id': 'obsidian-primary-test'})",
+        "retention = report['output_retention']",
+        "assert retention['primary_output']['path'].endswith('01-完整正文.md'), retention",
+        "assert retention['primary_output']['missing_total'] > 0, retention",
+        "assert any('final knowledge output' in err for err in report['strict_errors']), report",
       ].join("\n"),
       [],
     );
@@ -826,7 +904,7 @@ describe("kbprep worker pipeline", () => {
         "assert retention['review_needed_md']['missing_total'] == 0, retention",
         "assert retention['evidence_md']['missing_total'] == 0, retention",
         "assert retention['missing_total'] == 0, retention",
-        "assert not any('kept detail signals missing from cleaned.md' in err for err in report['strict_errors']), report",
+        "assert not any('kept detail signals missing from final knowledge output' in err for err in report['strict_errors']), report",
       ].join("\n"),
       [],
     );
@@ -1095,6 +1173,282 @@ describe("kbprep worker pipeline", () => {
       expect(cleaned).not.toContain("扫码入群领取体验卡");
       expect(discarded).toContain("扫码入群领取体验卡");
       expect(discarded).not.toContain("讲平台规则或违规案例");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("removes community marketing wrapper sections from knowledge-base output", () => {
+    runPython(
+      [
+        "from pathlib import Path",
+        "from tempfile import TemporaryDirectory",
+        "from kbprep_worker.classify_blocks import classify_blocks",
+        "from kbprep_worker.clean_rules import apply_clean_rules",
+        "from kbprep_worker.render_outputs import render",
+        "from kbprep_worker.quality import run_quality_check",
+        "with TemporaryDirectory() as tmp:",
+        "    run_dir = Path(tmp)",
+        "    blocks = [",
+        "        {'block_id': 'title', 'type': 'section_heading', 'status': 'unclassified', 'text': '# \\u751f\\u8d22AI\\u5b9d\\u5178', 'heading_path': ['\\u751f\\u8d22AI\\u5b9d\\u5178']},",
+        "        {'block_id': 'promo_h1', 'type': 'section_heading', 'status': 'unclassified', 'text': '# \\u627e\\u9879\\u76ee\\uff0c\\u505a\\u526f\\u4e1a\\uff0c\\u5b66AI\\u6765\\u751f\\u8d22\\u6709\\u672f', 'heading_path': ['\\u627e\\u9879\\u76ee\\uff0c\\u505a\\u526f\\u4e1a\\uff0c\\u5b66AI\\u6765\\u751f\\u8d22\\u6709\\u672f']},",
+        "        {'block_id': 'promo_p1', 'type': 'paragraph', 'status': 'unclassified', 'text': '\\u548c30000+ \\u5b9e\\u6218\\u6d3e\\u540c\\u884c\\u5728AI\\u65f6\\u4ee3\\u66f4\\u6709\\u9009\\u62e9\\u6743', 'heading_path': ['\\u627e\\u9879\\u76ee\\uff0c\\u505a\\u526f\\u4e1a\\uff0c\\u5b66AI\\u6765\\u751f\\u8d22\\u6709\\u672f']},",
+        "        {'block_id': 'refund', 'type': 'paragraph', 'status': 'unclassified', 'text': '3\\u5929\\u5185\\u65e0\\u7406\\u7531\\u9000\\u6b3e', 'heading_path': ['\\u627e\\u9879\\u76ee\\uff0c\\u505a\\u526f\\u4e1a\\uff0c\\u5b66AI\\u6765\\u751f\\u8d22\\u6709\\u672f']},",
+        "        {'block_id': 'assistant', 'type': 'paragraph', 'status': 'unclassified', 'text': '\\u751f\\u8d22\\u6709\\u672fAI\\u95ee\\u7b54\\u52a9\\u624b\\n\\u626b\\u7801\\u4f53\\u9a8c\\u751f\\u8d22\\u6709\\u672fAI\\u95ee\\u7b54\\u52a9\\u624b', 'heading_path': ['\\u751f\\u8d22\\u6709\\u672fAI\\u95ee\\u7b54\\u52a9\\u624b']},",
+        "        {'block_id': 'body_h1', 'type': 'section_heading', 'status': 'unclassified', 'text': '# \\u751f\\u8d22\\u8981\\u5982\\u4f55\\u5e26\\u7740\\u5927\\u5bb6All in AI', 'heading_path': ['\\u751f\\u8d22\\u8981\\u5982\\u4f55\\u5e26\\u7740\\u5927\\u5bb6All in AI']},",
+        "        {'block_id': 'body_step', 'type': 'paragraph', 'status': 'unclassified', 'text': '\\u7b2c\\u4e00\\u6b65\\uff1a\\u6253\\u5f00 Claude Code\\uff0c\\u8bb0\\u5f55 threshold=0.8 \\u548c failure_reason\\uff0c\\u7136\\u540e\\u590d\\u76d8\\u6848\\u4f8b\\u65b9\\u6cd5\\u3002', 'heading_path': ['\\u751f\\u8d22\\u8981\\u5982\\u4f55\\u5e26\\u7740\\u5927\\u5bb6All in AI']},",
+        "        {'block_id': 'back_h1', 'type': 'section_heading', 'status': 'unclassified', 'text': '## \\u5199\\u5728\\u6700\\u540e\\u00b7\\u5173\\u4e8e\\u300a\\u751f\\u8d22AI\\u5b9d\\u5178\\u300b', 'heading_path': ['\\u5199\\u5728\\u6700\\u540e\\u00b7\\u5173\\u4e8e\\u300a\\u751f\\u8d22AI\\u5b9d\\u5178\\u300b']},",
+        "        {'block_id': 'back_p1', 'type': 'paragraph', 'status': 'unclassified', 'text': '\\u672c\\u4e66\\u5185\\u5bb9\\u4ec5\\u4f9b\\u5b66\\u4e60\\u4e0e\\u53c2\\u8003\\u4e4b\\u7528\\uff0c\\u4e0d\\u6784\\u6210\\u4efb\\u4f55\\u5f62\\u5f0f\\u7684\\u6295\\u8d44\\u51b3\\u7b56\\u5efa\\u8bae\\u3002', 'heading_path': ['\\u5199\\u5728\\u6700\\u540e\\u00b7\\u5173\\u4e8e\\u300a\\u751f\\u8d22AI\\u5b9d\\u5178\\u300b']},",
+        "        {'block_id': 'copyright', 'type': 'section_heading', 'status': 'unclassified', 'text': '## \\u7248\\u6743\\u58f0\\u660e', 'heading_path': ['\\u7248\\u6743\\u58f0\\u660e']},",
+        "        {'block_id': 'thanks', 'type': 'section_heading', 'status': 'unclassified', 'text': '## \\u81f4\\u8c22\\u00b7\\u5171\\u521b\\u7684\\u529b\\u91cf', 'heading_path': ['\\u81f4\\u8c22\\u00b7\\u5171\\u521b\\u7684\\u529b\\u91cf']},",
+        "    ]",
+        "    blocks = apply_clean_rules(classify_blocks(blocks))",
+        "    render(blocks, str(run_dir), 'sha', 'run')",
+        "    report = run_quality_check(blocks, str(run_dir), 'markdown_note', {'file_id': 'marketing-wrapper-test'})",
+        "    cleaned = (run_dir / 'cleaned.md').read_text(encoding='utf-8')",
+        "    discarded = (run_dir / 'discarded.md').read_text(encoding='utf-8')",
+        "    assert '\\u751f\\u8d22AI\\u5b9d\\u5178' in cleaned, cleaned",
+        "    assert 'threshold=0.8' in cleaned, cleaned",
+        "    assert '\\u627e\\u9879\\u76ee' not in cleaned, cleaned",
+        "    assert '30000+' not in cleaned, cleaned",
+        "    assert '3\\u5929\\u5185\\u65e0\\u7406\\u7531\\u9000\\u6b3e' not in cleaned, cleaned",
+        "    assert 'AI\\u95ee\\u7b54\\u52a9\\u624b' not in cleaned, cleaned",
+        "    assert '\\u7248\\u6743\\u58f0\\u660e' not in cleaned, cleaned",
+        "    assert '\\u81f4\\u8c22' not in cleaned, cleaned",
+        "    assert '\\u627e\\u9879\\u76ee' in discarded, discarded",
+        "    assert '3\\u5929\\u5185\\u65e0\\u7406\\u7531\\u9000\\u6b3e' in discarded, discarded",
+        "    assert not report['strict_errors'], report",
+      ].join("\n"),
+      [],
+    );
+  });
+
+  it("keeps marketing-domain methods while removing direct promotion", () => {
+    runPython(
+      [
+        "from kbprep_worker.classify_blocks import classify_blocks",
+        "from kbprep_worker.clean_rules import apply_clean_rules",
+        "blocks = [",
+        "  {'block_id': 'account_matrix', 'type': 'paragraph', 'status': 'unclassified', 'text': '\\u50cf\\u89c6\\u9891\\u53f7\\u662f\\u7528\\u5fae\\u4fe1\\u6ce8\\u518c\\uff0c\\u4e00\\u4e2a\\u5fae\\u4fe1\\u7ed1\\u5b9a\\u4e00\\u4e2a\\u89c6\\u9891\\u53f7\\uff0c\\u4f46\\u662f\\u8981\\u5f00\\u901a\\u521b\\u4f5c\\u8005\\u5206\\u6210\\u5e76\\u7a33\\u5b9a\\u6536\\u76ca\\uff0c\\u662f\\u9700\\u8981\\u8fdb\\u884c\\u5b9e\\u540d\\u8ba4\\u8bc1\\u7684\\u30021\\u4e2a\\u8eab\\u4efd\\u8bc1\\u53ef\\u4ee5\\u8ba4\\u8bc15\\u4e2a\\u5fae\\u4fe1\\u53f7\\uff0c2\\u4e2a\\u89c6\\u9891\\u53f7\\u3002', 'heading_path': ['LC AIGC\\u4ee3\\u4e00\\uff1aAI\\u8d4b\\u80fd\\u89c6\\u9891\\u53f7\\u5982\\u4f55\\u901a\\u8fc7\\u8d26\\u53f7\\u77e9\\u9635\\u5b9e\\u73b0\\u6708\\u51653\\u4e07']},",
+        "  {'block_id': 'ending_lead', 'type': 'paragraph', 'status': 'unclassified', 'text': '1\\uff09\\u6587\\u672b\\u5f15\\u5bfc\\uff1a\\u5728\\u6587\\u7ae0\\u7ed3\\u5c3e\\u52a0\\u201c\\u798f\\u5229\\u201d\\uff0c\\u6bd4\\u5982\\u201c\\u6211\\u6574\\u7406\\u4e86\\u300a100\\u7bc7\\u8bfb\\u4e66\\u53f7\\u7206\\u6587\\u6807\\u9898\\u6a21\\u677f\\u300b\\uff0c\\u60f3\\u62ff\\u7684\\u670b\\u53cb\\u53ef\\u4ee5\\u52a0\\u6211\\u5fae\\u4fe1\\u3010XXX\\u3011\\uff0c\\u56de\\u590d\\u6807\\u9898\\u76f4\\u63a5\\u9886\\u201d\\uff0c\\u6ce8\\u610f\\u7528\\u6635\\u79f0+\\u5173\\u952e\\u8bcd\\u7684\\u5f62\\u5f0f\\uff0c\\u522b\\u76f4\\u63a5\\u53d1\\u5fae\\u4fe1\\u53f7\\uff0c\\u907f\\u514d\\u88ab\\u5e73\\u53f0\\u9650\\u6d41\\uff1b', 'heading_path': ['\\u5218\\u667a\\u884c\\uff1a\\u7528AI\\u8d4b\\u80fd\\u5782\\u76f4\\u5c0f\\u53f7\\u6253\\u9020\\u51fa20\\u4e2a\\u7206\\u6b3e\\u8d5b\\u9053\\u8d26\\u53f7', '2.\\u7528\\u6237\\u8fd0\\u8425']},",
+        "  {'block_id': 'tool_lead', 'type': 'paragraph', 'status': 'unclassified', 'text': '\\u5148\\u5356\\u5bf9\\u6807\\u4ea7\\u54c1\\u9a8c\\u8bc1\\u9700\\u6c42\\uff0c\\u7528\\u81ea\\u5df1AI\\u5f00\\u53d1\\u7684\\u5de5\\u5177\\u53d1\\u7b14\\u8bb0\\u5f15\\u6d41\\uff1b\\u4f1a\\u5728\\u5de5\\u5177\\u4e2d\\u5d4c\\u5165\\u5fae\\u4fe1\\u53f7\\uff0c\\u81ea\\u52a8\\u5bfc\\u6d41\\u7cbe\\u51c6\\u5ba2\\u7fa4\\uff1b\\u627e\\u4eba\\u6301\\u7eed\\u4f18\\u5316\\uff0c20\\u591a\\u5929\\u8fed\\u4ee3\\u4e8610-20\\u8f6e\\u3002', 'heading_path': ['\\u661f\\u57ce\\uff1a\\u505a\\u51fa\\u6d77\\u4e1a\\u52a1\\u6211\\u65e5\\u5e38\\u662f\\u600e\\u4e48\\u7528AI\\u7684\\uff1f']},",
+        "  {'block_id': 'pure_cta', 'type': 'paragraph', 'status': 'unclassified', 'text': '\\u626b\\u7801\\u52a0\\u5165\\u793e\\u7fa4\\u514d\\u8d39\\u9886\\u53d6\\u4f53\\u9a8c\\u5361\\u3002', 'heading_path': []},",
+        "]",
+        "cleaned = apply_clean_rules(classify_blocks(blocks))",
+        "by_id = {b['block_id']: b for b in cleaned}",
+        "assert by_id['account_matrix']['status'] == 'keep', by_id['account_matrix']",
+        "assert by_id['ending_lead']['status'] == 'keep', by_id['ending_lead']",
+        "assert by_id['tool_lead']['status'] == 'keep', by_id['tool_lead']",
+        "assert by_id['pure_cta']['status'] == 'discard', by_id['pure_cta']",
+      ].join("\n"),
+      [],
+    );
+  });
+
+  it("renders a curated Obsidian knowledge base without author bios or identity wrappers", () => {
+    runPython(
+      [
+        "from pathlib import Path",
+        "from tempfile import TemporaryDirectory",
+        "from kbprep_worker.obsidian_kb import apply_curated_obsidian_policy, render_obsidian_vault",
+        "with TemporaryDirectory() as tmp:",
+        "    run_dir = Path(tmp)",
+        "    blocks = [",
+        "        {'block_id': 'h1', 'type': 'section_heading', 'status': 'keep', 'text': '# Gary: YouTube AI 内容出海把全球第一的视频平台变成自己的金矿？', 'heading_path': ['Gary: YouTube AI 内容出海把全球第一的视频平台变成自己的金矿？']},",
+        "        {'block_id': 'wrapper_title', 'type': 'section_heading', 'status': 'keep', 'text': '# 生财AI宝典', 'heading_path': ['生财AI宝典']},",
+        "        {'block_id': 'brand_heading', 'type': 'section_heading', 'status': 'keep', 'text': '# 生财有术在AI领域看到的3个超级机会', 'heading_path': ['生财有术在AI领域看到的3个超级机会']},",
+        "        {'block_id': 'toc_h1', 'type': 'section_heading', 'status': 'keep', 'text': '# 认知篇：生财有术在AI领域看到的3个超级机会', 'heading_path': ['认知篇：生财有术在AI领域看到的3个超级机会']},",
+        "        {'block_id': 'toc_h2', 'type': 'section_heading', 'status': 'keep', 'text': '## AIGC', 'heading_path': ['认知篇：生财有术在AI领域看到的3个超级机会', 'AIGC']},",
+        "        {'block_id': 'toc_body', 'type': 'tool_instruction', 'status': 'keep', 'protected': True, 'text': '亦仁：为什么AIGC是超级机会？ 01\\nGary：YouTubeAI内容出海，把全球第一的视频平台变成自己的金矿 05\\n代一：AI赋能视频号，如何通过账号矩阵实现月入3万 19', 'heading_path': ['认知篇：生财有术在AI领域看到的3个超级机会', 'AIGC']},",
+        "        {'block_id': 'real_h', 'type': 'section_heading', 'status': 'keep', 'text': '## AI领域看到的3个超级机会', 'heading_path': ['AI领域看到的3个超级机会']},",
+        "        {'block_id': 'brand_program', 'type': 'paragraph', 'status': 'keep', 'text': '过去一年，生财围绕这条路径，也发布了9条AI超级标，这些超级标也形成了完整的AI航海体系。', 'heading_path': ['二、AI对大多数圈友的机会，集中在4个确定性方向']},",
+        "        {'block_id': 'bio', 'type': 'paragraph', 'status': 'keep', 'text': 'Gary，海外 AI 自媒体博主，连续创业者，擅长 YouTube 内容出海，下面先介绍一下我自己。', 'heading_path': ['Gary: YouTube AI 内容出海把全球第一的视频平台变成自己的金矿？']},",
+        "        {'block_id': 'author_handle', 'type': 'paragraph', 'status': 'keep', 'text': '@代一', 'heading_path': ['LC AIGC代一：AI赋能视频号如何通过账号矩阵实现月入3万']},",
+        "        {'block_id': 'author_role', 'type': 'paragraph', 'status': 'keep', 'text': 'AI+流量创业者', 'heading_path': ['LC AIGC代一：AI赋能视频号如何通过账号矩阵实现月入3万']},",
+        "        {'block_id': 'author_credential', 'type': 'paragraph', 'status': 'keep', 'text': '高客单赛道视频号矩阵单日获客1000+', 'heading_path': ['LC AIGC代一：AI赋能视频号如何通过账号矩阵实现月入3万']},",
+        "        {'block_id': 'author_h2', 'type': 'section_heading', 'status': 'keep', 'text': '# AI产品阿彪：AI产品出海如何高效系统化地获取流量', 'heading_path': ['AI产品阿彪：AI产品出海如何高效系统化地获取流量']},",
+        "        {'block_id': 'author_handle_2', 'type': 'paragraph', 'status': 'keep', 'text': '@阿彪', 'heading_path': ['AI产品阿彪：AI产品出海如何高效系统化地获取流量']},",
+        "        {'block_id': 'body', 'type': 'paragraph', 'status': 'keep', 'text': '为什么在 YouTube 做 AI 内容出海？核心是先选择垂类赛道，再用脚本模板测试点击率，最后把可复用流程沉淀成 SOP。', 'heading_path': ['Gary: YouTube AI 内容出海把全球第一的视频平台变成自己的金矿？']},",
+        "        {'block_id': 'inline_case_context', 'type': 'operation_step', 'status': 'keep', 'text': '4.不少圈友靠AI产品已经赚到钱，比如圈友@阿彪两款AI产品年营收千万美金，其中Pollo AI拿到了1400万美元融资。', 'heading_path': ['为什么AI产品是超级机会？']},",
+        "        {'block_id': 'step', 'type': 'operation_step', 'status': 'keep', 'protected': True, 'text': '1）脚本测试：先生成 10 个标题，用 Gemini 判断信息差，再保留 CTR 高的方向。', 'heading_path': ['Gary: YouTube AI 内容出海把全球第一的视频平台变成自己的金矿？']},",
+        "        {'block_id': 'img', 'type': 'image_operation', 'status': 'keep', 'text': '![作者头像](images/avatar.png)', 'heading_path': ['Gary: YouTube AI 内容出海把全球第一的视频平台变成自己的金矿？']},",
+        "        {'block_id': 'layout_table', 'type': 'table', 'status': 'keep', 'protected': True, 'text': '| 20:44 |  |  |\\n| --- | --- | --- |\\n| <返回 |  | 帐户明细 |\\n| 日期范围 | 近7日 | 近30日 |\\n|  |  |  |', 'heading_path': ['Gary: YouTube AI 内容出海把全球第一的视频平台变成自己的金矿？']},",
+        "        {'block_id': 'method_table', 'type': 'table', 'status': 'keep', 'protected': True, 'text': '| 工具 | 问题 |\\n| --- | --- |\\n| RPA | 录制图形界面操作，界面一变就失效 |\\n| n8n | 更适合连接本地应用和模型节点 |', 'heading_path': ['Gary: YouTube AI 内容出海把全球第一的视频平台变成自己的金矿？']},",
+        "        {'block_id': 'h2', 'type': 'section_heading', 'status': 'keep', 'text': '# 老黄牛：不要用 AI 优化传统的工作，而是重构流程', 'heading_path': ['老黄牛：不要用 AI 优化传统的工作，而是重构流程']},",
+        "        {'block_id': 'body2', 'type': 'paragraph', 'status': 'keep', 'text': '不要用 AI 优化传统的工作，而是把输入、判断、输出重新拆开，让模型参与每一个可验证节点。', 'heading_path': ['老黄牛：不要用 AI 优化传统的工作，而是重构流程']},",
+        "    ]",
+        "    blocks = apply_curated_obsidian_policy(blocks)",
+        "    render_obsidian_vault(blocks, str(run_dir), source_title='普通人的AI应用宝典', source_hash='sha', run_id='run')",
+        "    complete = (run_dir / 'obsidian' / '01-完整正文.md').read_text(encoding='utf-8')",
+        "    index = (run_dir / 'obsidian' / '00-索引.md').read_text(encoding='utf-8')",
+        "    discarded = (run_dir / 'obsidian' / '_audit' / 'discarded.md').read_text(encoding='utf-8')",
+        "    source_map = (run_dir / 'obsidian' / '_audit' / 'source-map.jsonl').read_text(encoding='utf-8')",
+        "    case_files = list((run_dir / 'obsidian' / '案例').glob('*.md'))",
+        "    method_files = list((run_dir / 'obsidian' / '方法').glob('*.md'))",
+        "    assert 'Gary:' not in complete, complete",
+        "    assert '老黄牛：' not in complete, complete",
+        "    assert '生财AI宝典' not in complete, complete",
+        "    assert '生财有术在AI领域' not in complete, complete",
+        "    assert '亦仁：为什么AIGC是超级机会？ 01' not in complete, complete",
+        "    assert 'AI超级标' not in complete, complete",
+        "    assert '@代一' not in complete, complete",
+        "    assert 'AI+流量创业者' not in complete, complete",
+        "    assert '高客单赛道视频号矩阵单日获客1000+' not in complete, complete",
+        "    assert 'Pollo AI拿到了1400万美元融资' in complete, complete",
+        "    assert '圈友@阿彪两款AI产品' in complete, complete",
+        "    assert 'AI领域看到的3个超级机会' in complete, complete",
+        "    assert complete.count('AI领域看到的3个超级机会') == 1, complete",
+        "    assert '海外 AI 自媒体博主' not in complete, complete",
+        "    assert '作者头像' not in complete, complete",
+        "    assert '帐户明细' not in complete, complete",
+        "    assert 'RPA' in complete, complete",
+        "    assert '为什么在 YouTube 做 AI 内容出海？' in complete, complete",
+        "    assert '脚本测试' in complete, complete",
+        "    assert '不要用 AI 优化传统的工作' in complete, complete",
+        "    assert '[[案例/' in index, index",
+        "    assert '[[方法/' in index, index",
+        "    assert case_files, 'expected at least one case note'",
+        "    assert method_files, 'expected at least one method note'",
+        "    assert '海外 AI 自媒体博主' in discarded, discarded",
+        "    assert 'author_identity' in discarded, discarded",
+        "    assert '高客单赛道视频号矩阵单日获客1000+' in discarded, discarded",
+        "    assert 'drop_image_for_text_kb' in discarded, discarded",
+        "    assert 'layout_table_artifact' in discarded, discarded",
+        "    assert 'drop_brand_program_packaging_for_text_kb' in discarded, discarded",
+        "    assert '\"block_id\": \"body\"' in source_map, source_map",
+      ].join("\n"),
+      [],
+    );
+  });
+
+  it("drops only front-matter presenter/social strips and visual separators", () => {
+    runPython(
+      [
+        "from kbprep_worker.obsidian_kb import apply_curated_obsidian_policy",
+        "blocks = [",
+        "    {'block_id': 'h1', 'type': 'section_heading', 'status': 'keep', 'text': '# Claude Code 在大型代码库中的最佳实践'},",
+        "    {'block_id': 'source', 'type': 'paragraph', 'status': 'keep', 'text': '基于 Claude 官方博客 · [阅读原文](https://claude.com/blog/example)'},",
+        "    {'block_id': 'presenter', 'type': 'paragraph', 'status': 'keep', 'text': '讲解：AI随风随风 [B站](https://space.bilibili.com/example) [抖音](https://www.douyin.com/user/example) [小红书](https://www.xiaohongshu.com/user/example) [YouTube](https://www.youtube.com/@example)'},",
+        "    {'block_id': 'sep', 'type': 'paragraph', 'status': 'keep', 'text': '==================== 第一章 ===================='},",
+        "    {'block_id': 'h2', 'type': 'section_heading', 'status': 'keep', 'text': '## 一、核心认知'},",
+        "    {'block_id': 'case', 'type': 'paragraph', 'status': 'keep', 'text': '案例中作者介绍了自己为什么选择这个方案，并给出判断方法。'},",
+        "    {'block_id': 'body_social', 'type': 'paragraph', 'status': 'keep', 'text': '正文里提到讲解：某团队在 YouTube 上测试标题，并保留 CTR 高的方向。'},",
+        "]",
+        "blocks = apply_curated_obsidian_policy(blocks)",
+        "by_id = {b['block_id']: b for b in blocks}",
+        "assert by_id['source']['status'] == 'keep', by_id['source']",
+        "assert by_id['presenter']['status'] == 'discard', by_id['presenter']",
+        "assert by_id['sep']['status'] == 'discard', by_id['sep']",
+        "assert by_id['case']['status'] == 'keep', by_id['case']",
+        "assert by_id['body_social']['status'] == 'keep', by_id['body_social']",
+      ].join("\n"),
+      [],
+    );
+  });
+
+  it("exports inline HTML SVG diagrams as uncropped standalone SVG assets", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-html-svg-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "diagram.html");
+      writeFileSync(
+        sourcePath,
+        [
+          "<html><head><title>Diagram Test</title></head><body><main>",
+          "<h1>Diagram Test</h1>",
+          "<svg viewbox=\"0 0 680 480\" width=\"100%\" role=\"img\" aria-label=\"Workflow diagram\">",
+          "<rect x=\"0\" y=\"0\" width=\"680\" height=\"480\" fill=\"#fff\"/>",
+          "<text x=\"340\" y=\"240\">threshold=0.8</text>",
+          "</svg>",
+          "<p>Step 1: keep the complete diagram and threshold=0.8.</p>",
+          "</main></body></html>",
+        ].join(""),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+
+      const converted = readFileSync(path.join(envelope.data.run_dir, "converted.md"), "utf8");
+      const svgText = readFileSync(path.join(outputRoot, "images", "Diagram-Test-diagram-01.svg"), "utf8");
+      expect(envelope.data.strict_errors).toEqual([]);
+      expect(converted).toContain("![Workflow diagram](images/Diagram-Test-diagram-01.svg)");
+      expect(svgText).toContain('viewBox="0 0 680 480"');
+      expect(svgText).toContain('width="680"');
+      expect(svgText).toContain('height="480"');
+      expect(svgText).toContain('preserveAspectRatio="xMidYMid meet"');
+      expect(svgText).not.toContain("viewbox=");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("prepares curated Obsidian outputs by default from the main pipeline", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-curated-obsidian-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "普通人的AI应用宝典.md");
+      writeFileSync(
+        sourcePath,
+        [
+          "# Gary: YouTube AI 内容出海把全球第一的视频平台变成自己的金矿？",
+          "",
+          "Gary，海外 AI 自媒体博主，连续创业者，擅长 YouTube 内容出海，下面先介绍一下我自己。",
+          "",
+          "为什么在 YouTube 做 AI 内容出海？核心是先选择垂类赛道，再用脚本模板测试点击率，最后把可复用流程沉淀成 SOP。",
+          "",
+          "1）脚本测试：先生成 10 个标题，用 Gemini 判断信息差，再保留 CTR 高的方向。",
+          "",
+          "![作者头像](images/avatar.png)",
+          "",
+          "# 老黄牛：不要用 AI 优化传统的工作，而是重构流程",
+          "",
+          "不要用 AI 优化传统的工作，而是把输入、判断、输出重新拆开，让模型参与每一个可验证节点。",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+
+      const runDir = envelope.data.run_dir;
+      const obsidianDir = path.join(runDir, "obsidian");
+      const latestObsidianDir = path.join(outputRoot, "obsidian");
+      const complete = readFileSync(path.join(obsidianDir, "01-完整正文.md"), "utf8");
+      const latestCleaned = readFileSync(envelope.data.latest_outputs.cleaned_md, "utf8");
+      const sourceFinalPath = path.join(inputDir, "鏅€氫汉鐨凙I搴旂敤瀹濆吀.cleaned.md");
+      const index = readFileSync(path.join(obsidianDir, "00-索引.md"), "utf8");
+      const discarded = readFileSync(path.join(obsidianDir, "_audit", "discarded.md"), "utf8");
+
+      expect(envelope.data.outputs.obsidian_dir).toBe(obsidianDir);
+      expect(envelope.data.latest_outputs.obsidian_dir).toBe(latestObsidianDir);
+      expect(envelope.data.latest_outputs.final_md).toBe(null);
+      expect(existsSync(sourceFinalPath)).toBe(false);
+      expect(existsSync(path.join(latestObsidianDir, "00-索引.md"))).toBe(true);
+      expect(complete).not.toContain("Gary:");
+      expect(latestCleaned).not.toContain("Gary:");
+      expect(complete).not.toContain("海外 AI 自媒体博主");
+      expect(complete).toContain("为什么在 YouTube 做 AI 内容出海？");
+      expect(complete).toContain("脚本测试");
+      expect(index).toContain("[[01-完整正文]]");
+      expect(index).toContain("[[案例/");
+      expect(discarded).toContain("author_identity");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -2084,7 +2438,7 @@ describe("kbprep worker pipeline", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("converts trusted text-layer PDFs without invoking MinerU", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-pdf-text-"));
@@ -2347,6 +2701,8 @@ describe("kbprep worker pipeline", () => {
       expect(existsSync(path.join(outputRoot, "images", "assets", "step.png"))).toBe(true);
       expect(existsSync(path.join(outputRoot, "images", "assets", "chart.png"))).toBe(true);
       expect(existsSync(path.join(outputRoot, "images", "result.png"))).toBe(true);
+      expect(latest.obsidian_dir).toBeNull();
+      expect(latest.obsidian_index).toBeNull();
       expect(report.image_retention.missing_file_count).toBe(0);
       expect(report.strict_errors).toEqual([]);
     } finally {

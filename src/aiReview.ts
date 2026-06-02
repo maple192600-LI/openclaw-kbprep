@@ -56,13 +56,18 @@ export async function maybeRunAiReview<T extends Record<string, unknown>>(
     workerConfig: Record<string, unknown>;
   },
 ): Promise<WorkerResult<T>> {
-  if (params.mode !== "ai_review" || !result.ok) {
+  if (params.mode !== "ai_review") {
+    return result;
+  }
+  if (!result.ok && result.error?.code !== "E_QA_FAILED") {
     return result;
   }
 
   const subagent = context.api.runtime?.subagent;
-  const runDir = String(result.data?.run_dir ?? "");
-  const reviewPackPath = String((result.data?.outputs as Record<string, unknown> | undefined)?.review_pack ?? "");
+  const sourceData = (result.ok ? result.data : result.error?.details) as Record<string, unknown> | undefined;
+  const sourceOutputs = (sourceData?.outputs as Record<string, unknown> | undefined) ?? {};
+  const runDir = String(sourceData?.run_dir ?? "");
+  const reviewPackPath = String(sourceOutputs.review_pack ?? "");
 
   if (!subagent || !runDir || !reviewPackPath) {
     return withAiWarning(result, "W_LLM_REVIEW_SKIPPED: AI review unavailable or review_pack missing.");
@@ -155,7 +160,7 @@ export async function maybeRunAiReview<T extends Record<string, unknown>>(
     return withAiWarning(result, `W_LLM_REVIEW_SKIPPED: AI patch was rejected (${applied.error?.message ?? "unknown error"}).`);
   }
 
-  const originalData = (result.data ?? {}) as Record<string, unknown>;
+  const originalData = (sourceData ?? {}) as Record<string, unknown>;
   const appliedData = (applied.data ?? {}) as Record<string, unknown>;
   const originalOutputs = (originalData.outputs ?? {}) as Record<string, unknown>;
   const updatedOutputs = (appliedData.updated_outputs ?? {}) as Record<string, unknown>;
@@ -193,6 +198,8 @@ function buildReviewPrompt(reviewPack: string, batchNumber = 1, batchCount = 1, 
     "Allowed ops: replace status/reason/confidence/risk_tags, or add a single risk_tags string.",
     "Allowed statuses are keep, discard, evidence, review.",
     "Never rewrite text. Never summarize. Never discard steps, prompts, code, tables, tool names, numbers, parameters, links, or concrete examples.",
+    "For curated Obsidian knowledge-base use, discard pure author bios, usernames, personal introductions, identity wrappers, credentials, and ad/backstory blocks that do not carry reusable knowledge.",
+    "Keep original source text intact. If deleting a block would break pronoun/reference continuity or remove setup needed by a later method, set status to review instead of discard.",
     "If context is insufficient, set status to review.",
     attempt > 1 ? "Previous response was invalid or unsafe. Return a valid patch array only, or [] if no safe change is needed." : "",
     "",
@@ -247,7 +254,8 @@ const AI_REVIEW_SYSTEM_PROMPT = [
   "You are a conservative knowledge-base cleaning reviewer.",
   "Your job is only to classify existing blocks as keep, discard, evidence, or review.",
   "You must not rewrite, compress, paraphrase, or summarize source text.",
-  "Prefer keep or review when a block might contain usable knowledge.",
+  "Prefer keep or review when a block might contain usable knowledge or when removal could break context.",
+  "Pure author bios, usernames, personal introductions, credentials, and advertising wrappers are not knowledge body.",
 ].join(" ");
 
 function extractJsonPatch(messages: unknown[]): unknown[] | null {

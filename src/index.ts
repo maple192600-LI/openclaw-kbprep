@@ -8,7 +8,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RUNTIME_MARKER_SCHEMA = "kbprep.plugin_venv.v2";
-const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]==3.2.1;PyMuPDF==1.27.2.3";
+const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]==3.2.1;PyMuPDF==1.27.2.3;beautifulsoup4==4.14.3;lxml==6.0.2";
 
 export function resolvePythonPath(startPath: string, config?: PluginConfig): string {
   const pluginPython = pluginVenvPythonPath();
@@ -299,7 +299,7 @@ export default defineToolPlugin({
   id: "openclaw-kbprep",
   name: "KB Prep Tool",
   description:
-    "Convert raw local files into clean Markdown for Obsidian or LLM Wiki use. It does not build indexes, generate wiki pages, or harvest remote sources.",
+    "Convert raw local files into clean Markdown for Obsidian or LLM Wiki use. It defaults to curated Obsidian knowledge-base output; use standard only for broad cleaned Markdown.",
   configSchema,
   tools: (tool) => [
     tool({
@@ -361,13 +361,13 @@ export default defineToolPlugin({
       name: "kbprep_prepare",
       label: "KBPrep Prepare",
       description:
-        "Convert one local source file into clean Markdown: detect, preserve original, convert, normalize, blockify by content structure, clean, render, split, and quality check.",
+        "Convert one local source file into clean Markdown: detect, preserve original, convert, normalize, blockify, clean, optionally curate into an Obsidian wiki folder, render, split, and quality check.",
       parameters: Type.Object({
         input_path: Type.String({ description: "Absolute path to the source file." }),
         output_root: Type.String({ description: "Absolute path to kbprep output root." }),
         profile: Type.Optional(
-          Type.Union([Type.Literal("lite"), Type.Literal("standard")], {
-            description: "Resource profile. Default 'standard'.",
+          Type.Union([Type.Literal("lite"), Type.Literal("standard"), Type.Literal("curated_obsidian_kb")], {
+            description: "Resource/output profile. Default 'curated_obsidian_kb' for text-first Obsidian wiki outputs with author/marketing wrappers removed. Use 'standard' only when you explicitly want a broad cleaned Markdown file.",
           })
         ),
         mode: Type.Optional(
@@ -396,7 +396,7 @@ export default defineToolPlugin({
         const result = await callWorker("prepare", {
           input_path: params.input_path,
           output_root: params.output_root,
-          profile: params.profile ?? "standard",
+          profile: params.profile ?? "curated_obsidian_kb",
           mode: workerMode,
           force: params.force ?? false,
           artifact_policy: params.artifact_policy ?? "keep_latest",
@@ -495,8 +495,8 @@ export default defineToolPlugin({
         input_dir: Type.String({ description: "Absolute path to a directory containing local source files." }),
         output_root: Type.String({ description: "Absolute path to kbprep output root." }),
         profile: Type.Optional(
-          Type.Union([Type.Literal("lite"), Type.Literal("standard")], {
-            description: "Resource profile. Default 'standard'.",
+          Type.Union([Type.Literal("lite"), Type.Literal("standard"), Type.Literal("curated_obsidian_kb")], {
+            description: "Resource profile. Default 'curated_obsidian_kb'. Use 'standard' only when you explicitly want broad cleaned Markdown.",
           })
         ),
         mode: Type.Optional(
@@ -519,7 +519,7 @@ export default defineToolPlugin({
         return callWorker("prepare_batch", {
           input_dir: params.input_dir,
           output_root: params.output_root,
-          profile: params.profile ?? "standard",
+          profile: params.profile ?? "curated_obsidian_kb",
           mode: params.mode ?? "rules_only",
           force: params.force ?? false,
           artifact_policy: params.artifact_policy ?? "keep_latest",

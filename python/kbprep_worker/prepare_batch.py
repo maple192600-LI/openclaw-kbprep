@@ -195,7 +195,7 @@ def _is_heavy_conversion_file(file_path: Path) -> bool:
 def run(data: dict) -> None:
     input_dir = data["input_dir"]
     output_root = data["output_root"]
-    profile = data.get("profile", "standard")
+    profile = data.get("profile", "curated_obsidian_kb")
     language = data.get("language", "zh")
     mode = data.get("mode", "rules_only")
     force = data.get("force", False)

@@ -1,8 +1,8 @@
 {
   "id": "openclaw-kbprep",
   "name": "KB Prep Tool",
-  "description": "Convert raw local files into clean Markdown for Obsidian or LLM Wiki use. It does not build indexes, generate wiki pages, or harvest remote sources.",
-  "version": "0.4.3",
+  "description": "Convert raw local files into clean Markdown for Obsidian or LLM Wiki use. It defaults to curated Obsidian knowledge-base output; use standard only for broad cleaned Markdown.",
+  "version": "0.4.4",
   "configSchema": {
     "type": "object",
     "properties": {

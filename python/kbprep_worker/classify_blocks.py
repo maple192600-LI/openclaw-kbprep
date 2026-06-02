@@ -51,7 +51,7 @@ EVIDENCE_PATTERNS = [
 ]
 
 STEP_RE = re.compile(
-    r"^\s*(?:\d+[\.\)\u3001]\s+|"
+    r"^\s*(?:\d+[\.\)\uff09\u3001]\s+|"
     r"step\s*\d+[\uff1a:\.\)\-\s]+|"
     r"\u7b2c?[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u5343\u4e07\d]+"
     r"(?:\u6b65|\u6b65\u9aa4)?[\uff1a:\u3001\.\s]|"
@@ -67,6 +67,76 @@ TOOL_RE = re.compile(
     re.IGNORECASE,
 )
 
+MARKETING_WRAPPER_HEADING_TERMS = [
+    "\u4f1a\u5458\u6743\u76ca",
+    "\u793e\u7fa4\u6743\u76ca",
+    "\u6838\u5fc3\u6743\u76ca",
+    "\u793e\u7fa4\u4ecb\u7ecd",
+    "\u793e\u7fa4\u62db\u52df",
+    "\u52a0\u5165\u793e\u7fa4",
+    "\u7acb\u5373\u52a0\u5165",
+    "\u8bad\u7ec3\u8425",
+    "\u5b9e\u6218\u8bad\u7ec3\u8425",
+    "\u7ebf\u4e0b\u94fe\u63a5",
+    "\u7ebf\u4e0b\u4ea4\u6d41",
+    "\u5b9e\u529b\u80cc\u4e66",
+    "\u6211\u4eec\u7684\u5b9e\u529b",
+    "\u5b66\u5458\u6743\u76ca",
+    "\u4ed8\u8d39\u4f1a\u5458",
+    "\u9650\u65f6\u4f18\u60e0",
+    "\u65e0\u7406\u7531\u9000\u6b3e",
+    "\u626b\u7801\u4f53\u9a8c",
+    "\u514d\u8d39\u9886\u53d6",
+    "\u9886\u53d6\u4f53\u9a8c\u5361",
+    "\u95ee\u7b54\u52a9\u624b",
+    "\u7248\u6743\u58f0\u660e",
+    "\u514d\u8d23\u58f0\u660e",
+    "\u6cd5\u5f8b\u58f0\u660e",
+    "\u81f4\u8c22",
+    "\u5171\u521b\u7684\u529b\u91cf",
+    "\u4e3b\u7f16",
+    "\u8d23\u4efb\u7f16\u8f91",
+    "\u5171\u521b\u4f19\u4f34",
+    "\u627e\u9879\u76ee",
+    "\u505a\u526f\u4e1a",
+    "\u751f\u8d22\u7684\u6838\u5fc3\u6743\u76ca",
+    "\u6838\u5fc3\u6743\u76ca",
+    "\u5b9e\u6218\u8bad\u7ec3\u8425",
+    "\u7ebf\u4e0b\u94fe\u63a5\u5c40",
+    "\u751f\u8d22\u7684\u5b9e\u529b",
+    "\u751f\u8d22\u6709\u672fAI\u95ee\u7b54\u52a9\u624b",
+    "AI\u95ee\u7b54\u52a9\u624b",
+    "\u5199\u5728\u6700\u540e",
+    "\u7248\u6743\u58f0\u660e",
+    "\u81f4\u8c22",
+    "\u4e3b\u7f16",
+    "\u8d23\u4efb\u7f16\u8f91",
+    "\u5171\u521b\u4f19\u4f34",
+]
+
+MARKETING_WRAPPER_LINE_PATTERNS = [
+    re.compile(r"3\s*\u5929\u5185\u65e0\u7406\u7531\u9000\u6b3e"),
+    re.compile(r"\d+\s*\u5929\u5185\u65e0\u7406\u7531\u9000\u6b3e"),
+    re.compile(r"\u626b\u7801(?:\u52a0\u5165|\u4f53\u9a8c|\u9886\u53d6)|\u957f\u6309\u8bc6\u522b.*(?:\u4f53\u9a8c|\u9886\u53d6|\u5165\u7fa4)"),
+    re.compile(r"\u6dfb\u52a0(?:\u5ba2\u670d|\u670d\u52a1\u5b98|\u5c0f\u52a9\u624b).*(?:\u9886\u53d6|\u5165\u7fa4|\u4f53\u9a8c)"),
+    re.compile(r"(?:\u52a0\u5165|\u6765\u5230).{0,12}(?:\u793e\u7fa4|\u5708\u5b50|\u4f1a\u5458).{0,20}(?:\u6743\u76ca|\u9009\u62e9\u6743|\u5b9e\u6218|\u540c\u884c)"),
+    re.compile(r"\u548c\s*\d{4,}\+\s*\u5b9e\u6218\u6d3e\u540c\u884c"),
+    re.compile(r"\u626b\u7801\u4f53\u9a8c.*AI\u95ee\u7b54\u52a9\u624b"),
+    re.compile(r"\u57fa\u4e8e\u793e\u533a.*\u4f18\u8d28\u5185\u5bb9.*\u5546\u4e1a\u6d1e\u5bdf"),
+    re.compile(r"\u672c\u4e66\u5185\u5bb9\u4ec5\u4f9b\u5b66\u4e60\u4e0e\u53c2\u8003"),
+    re.compile(r"\u4e0d\u6784\u6210\u4efb\u4f55\u5f62\u5f0f\u7684(?:\u6295\u8d44|\u5546\u4e1a|\u6cd5\u5f8b)"),
+    re.compile(r"\u4efb\u4f55\u672a\u7ecf\u6388\u6743.*\u590d\u5236|\u4fb5\u6743.*\u8ffd\u7a76"),
+]
+
+BUSINESS_METHOD_CONTEXT_TERMS = [
+    "\u6848\u4f8b", "\u590d\u76d8", "\u65b9\u6cd5", "\u7b56\u7565", "\u6b65\u9aa4",
+    "\u8d26\u53f7", "\u8d26\u53f7\u77e9\u9635", "\u89c6\u9891\u53f7", "\u516c\u4f17\u53f7",
+    "\u6587\u672b\u5f15\u5bfc", "\u7528\u6237\u8fd0\u8425", "\u79c1\u57df", "\u5f15\u6d41",
+    "\u5bfc\u6d41", "\u5ba2\u7fa4", "\u9a8c\u8bc1\u9700\u6c42", "\u8fed\u4ee3",
+    "\u5de5\u5177", "\u5b9e\u540d\u8ba4\u8bc1", "\u5206\u6210", "\u6536\u76ca",
+    "\u907f\u514d\u88ab\u5e73\u53f0\u9650\u6d41", "\u5e73\u53f0\u89c4\u5219",
+]
+
 
 def classify_blocks(blocks: list[dict]) -> list[dict]:
     """Assign type, status, protection, and confidence to each block."""
@@ -79,6 +149,14 @@ def classify_blocks(blocks: list[dict]) -> list[dict]:
             continue
 
         block_type = block.get("type")
+
+        marketing_wrapper_type = _marketing_wrapper_type(block, text)
+        if marketing_wrapper_type:
+            block["status"] = "discard"
+            block["type"] = marketing_wrapper_type
+            block["reason"] = "knowledge-base wrapper/marketing material"
+            block["confidence"] = 0.96
+            continue
 
         if block_type in {"code", "table", "section_heading", "quote"}:
             block["status"] = "keep"
@@ -106,7 +184,7 @@ def classify_blocks(blocks: list[dict]) -> list[dict]:
             block["confidence"] = 0.90
             continue
 
-        if _is_contextual_cta_knowledge(text):
+        if _is_contextual_cta_knowledge(text, block):
             block["status"] = "keep"
             block["type"] = "case_step"
             block["protected"] = True
@@ -176,6 +254,66 @@ def _evidence_type(text: str) -> str | None:
     return None
 
 
+def _marketing_wrapper_type(block: dict, text: str) -> str | None:
+    """Remove source packaging that markets the community/book rather than teaching."""
+    heading_path = block.get("heading_path", []) or []
+    heading_text = " ".join(str(item) for item in heading_path)
+    searchable = f"{heading_text}\n{text}"
+
+    # Keep the book title itself; remove surrounding sales/back-matter sections.
+    if text.strip().lstrip("# ").strip() in {"\u751f\u8d22AI\u5b9d\u5178", "\u300a\u751f\u8d22AI\u5b9d\u5178\u300b"}:
+        return None
+
+    if _is_standalone_direct_cta(text):
+        return "marketing_cta"
+
+    if _has_method_knowledge_signal(text, heading_text):
+        return None
+
+    if any(term in searchable for term in MARKETING_WRAPPER_HEADING_TERMS):
+        if any(term in searchable for term in ["\u5199\u5728\u6700\u540e", "\u7248\u6743\u58f0\u660e", "\u81f4\u8c22", "\u4e3b\u7f16", "\u8d23\u4efb\u7f16\u8f91", "\u5171\u521b\u4f19\u4f34"]):
+            return "back_matter"
+        return "marketing_wrapper"
+
+    if any(pattern.search(text) for pattern in MARKETING_WRAPPER_LINE_PATTERNS):
+        return "marketing_wrapper"
+
+    return None
+
+
+def _is_standalone_direct_cta(text: str) -> bool:
+    """Direct short CTA lines are pollution even inside an otherwise useful chapter."""
+    compact = re.sub(r"\s+", "", text)
+    if len(compact) > 80:
+        return False
+    has_cta_action = re.search(
+        r"\u626b\u7801|\u957f\u6309\u8bc6\u522b|\u6dfb\u52a0(?:\u5fae\u4fe1|\u5ba2\u670d|\u670d\u52a1\u5b98)|"
+        r"\u5165\u7fa4|\u8fdb\u7fa4|\u52a0\u7fa4|\u514d\u8d39\u9886\u53d6|\u9886\u53d6\u798f\u5229|\u4f53\u9a8c\u5361",
+        compact,
+    )
+    if not has_cta_action:
+        return False
+    return not any(term in compact for term in [
+        "\u6848\u4f8b", "\u590d\u76d8", "\u5e73\u53f0\u89c4\u5219", "\u8fdd\u89c4",
+        "\u5224\u65ad\u6807\u51c6", "risk_label", "\u6e05\u6d17", "\u8bef\u5220",
+        "\u4fdd\u7559", "\u5224\u5b9a", "\u51fa\u73b0",
+    ])
+
+
+def _has_method_knowledge_signal(text: str, heading_text: str = "") -> bool:
+    """True when marketing-related words are part of reusable method/case content."""
+    searchable = f"{heading_text}\n{text}"
+    if STEP_RE.search(text):
+        return True
+    if any(term in searchable for term in BUSINESS_METHOD_CONTEXT_TERMS):
+        return True
+    return bool(re.search(
+        r"(\u5982\u4f55|\u600e\u4e48|\u65b9\u6cd5|\u6b65\u9aa4|\u7b56\u7565|\u6848\u4f8b|\u590d\u76d8|\u5b9e\u64cd|\u5e95\u5c42\u903b\u8f91).{0,80}"
+        r"(\u5f15\u6d41|\u79c1\u57df|\u8d26\u53f7|\u8fd0\u8425|\u5de5\u5177|\u6d41\u91cf|\u8f6c\u5316|\u5ba2\u7fa4|\u8fed\u4ee3)",
+        searchable,
+    ))
+
+
 def _is_garbled(text: str) -> bool:
     """Check if text is garbled while avoiding false positives on Chinese."""
     if len(text) < 20:
@@ -184,13 +322,15 @@ def _is_garbled(text: str) -> bool:
     return garbled_chars / len(text) > 0.3
 
 
-def _is_contextual_cta_knowledge(text: str) -> bool:
+def _is_contextual_cta_knowledge(text: str, block: dict | None = None) -> bool:
     """Keep CTA-like phrases when they are the object of a lesson or case."""
     cta_terms = [
         "\u626b\u7801", "\u4e8c\u7ef4\u7801", "\u957f\u6309\u8bc6\u522b",
         "\u5165\u7fa4", "\u8fdb\u7fa4", "\u52a0\u7fa4", "\u793e\u7fa4",
         "\u4f53\u9a8c\u5361", "\u9886\u53d6\u798f\u5229",
         "\u514d\u8d39\u9886\u53d6", "\u8d2d\u4e70\u5f15\u5bfc",
+        "\u5fae\u4fe1", "\u5fae\u4fe1\u53f7", "\u52a0\u5fae\u4fe1",
+        "\u5f15\u6d41", "\u5bfc\u6d41", "\u79c1\u57df",
     ]
     if not any(term in text for term in cta_terms):
         return False
@@ -206,8 +346,19 @@ def _is_contextual_cta_knowledge(text: str) -> bool:
         "\u8bef\u5220", "\u5220\u9519", "\u8303\u56f4", "\u6d4b\u8bd5",
         "\u56fe\u7247\u6e05\u6d17", "\u8425\u9500\u56fe", "\u4e8c\u7ef4\u7801\u56fe",
         "cleaned.md", "discarded.md", "review_needed.md",
+        "\u8d26\u53f7", "\u8d26\u53f7\u77e9\u9635", "\u89c6\u9891\u53f7",
+        "\u516c\u4f17\u53f7", "\u6587\u672b\u5f15\u5bfc", "\u7528\u6237\u8fd0\u8425",
+        "\u79c1\u57df", "\u5f15\u6d41", "\u5bfc\u6d41", "\u5ba2\u7fa4",
+        "\u9a8c\u8bc1\u9700\u6c42", "\u8fed\u4ee3", "\u5de5\u5177",
+        "\u5b9e\u540d\u8ba4\u8bc1", "\u5206\u6210", "\u6536\u76ca",
+        "\u907f\u514d\u88ab\u5e73\u53f0\u9650\u6d41",
     ]
     if any(term in text for term in knowledge_terms):
+        return True
+
+    block = block or {}
+    heading_text = " ".join(str(item) for item in (block.get("heading_path", []) or []))
+    if any(term in heading_text for term in BUSINESS_METHOD_CONTEXT_TERMS):
         return True
 
     return bool(re.search(
