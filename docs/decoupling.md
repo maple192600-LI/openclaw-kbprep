@@ -1,9 +1,9 @@
 # Host-Agnostic Architecture
 
 This document explains how kbprep went from a single-host OpenClaw plugin
-(v0.4.x) to a host-agnostic skill with four interchangeable entry points
-(v0.5.0+). It is intended for contributors adding a fifth host or
-debugging cross-host behaviour.
+(v0.4.x) to a host-agnostic skill with three interchangeable entry points
+(v0.5.0+). It is intended for contributors adding a wrapper for a fourth
+host or debugging cross-host behaviour.
 
 ## The Problem (v0.4.x)
 
@@ -11,17 +11,17 @@ debugging cross-host behaviour.
 - `src/index.ts` imported `openclaw/plugin-sdk/tool-plugin` at module top.
 - `src/aiReview.ts` called `context.api.runtime.subagent` directly.
 - `envelope.py` docstring said "TypeScript layer" as if there was only one.
-- Codex / Claude Code / Cursor users had no way to call kbprep.
+- Non-OpenClaw users (shell scripts, Python scripts, Claude Code, Codex) had no way to call kbprep.
 
 ## The Solution (v0.5.0)
 
 The Python core (`python/kbprep_worker/`) is host-agnostic. It speaks
 JSON-on-stdin, JSON-on-stdout, and emits JSONL logs to stderr. The
-TypeScript layer is split into four adapters:
+TypeScript layer is split into:
 
 ```
 src/
-├── index.ts                # OpenClaw plugin entry (legacy; re-exports below)
+├── index.ts                # OpenClaw plugin entry (legacy; unchanged for v0.4.x compat)
 ├── aiReview.ts             # OpenClaw AI review glue (legacy)
 ├── errors.ts               # Error / warning codes (KBPREP_E_* / KBPREP_W_*)
 ├── worker.ts               # Python worker spawner (host-agnostic)
@@ -34,25 +34,37 @@ src/
     │   ├── claude_code.ts  # shells out to `claude` CLI
     │   ├── codex.ts        # shells out to `codex` CLI
     │   └── index.ts        # factory
-    ├── mcp/                # MCP server (Codex / Claude Code / Cursor)
-    │   ├── server.ts
-    │   └── bin.ts
     └── standalone/         # Standalone CLI (shell, cron, scripts)
         ├── cli.ts
         └── bin/
 ```
 
-## How to Add a New Host
+## Entry Points (priority order)
 
-1. Create `src/adapters/<your-host>/<entry>.ts`.
-2. Import `callWorker` from `../../worker.js` and
-   `ensurePythonRuntime` from `../python_runtime.js`.
+| Priority | Entry point | When to use | Token cost |
+|---|---|---|---|
+| 1 (primary) | **OpenClaw plugin** | OpenClaw users; auto-registered tools | Zero (host-managed) |
+| 2 | **Standalone CLI** | Shell scripts, cron, Makefiles, self-media operators | Zero (subprocess only) |
+| 3 | **Python API** | Python scripts, Jupyter notebooks | Zero (in-process) |
+| 4 (optional) | **A fourth-host plugin** (e.g. Claude Code plugin) | Each non-OpenClaw host's own plugin system | Per host (usually low) |
+
+Each host should pick its own way to invoke the same Python core. The pattern is:
+
+1. The host has a plugin / extension / skill system.
+2. The plugin ships a thin TypeScript or Python wrapper that maps the host's tool format onto the six core commands.
+3. The wrapper shells out to the Python worker (`python -m kbprep_worker.cli <command> --json-stdin`).
+
+## How to Add a New Host Wrapper
+
+1. Create a wrapper directory: `src/adapters/<your-host>/` (TS) or `wrappers/<your-host>/` (Python).
+2. Import `callWorker` from `../../worker.js` and `ensurePythonRuntime` from `../python_runtime.js`.
 3. Map the host's protocol to the six core commands:
    `preflight`, `diagnose`, `prepare`, `apply-review`, `cleanup`, `prepare-batch`.
-4. Add a bin entry in `package.json` `[bin]` if the host expects a CLI
-   binary (e.g. `kbprep-mcp` for MCP).
-5. If the host needs AI review, plug a new `AIReviewBackend` into
+4. If the host needs AI review, plug a new `AIReviewBackend` into
    `src/adapters/ai_review/index.ts:buildBackend()`.
+5. Add a bin entry in `package.json` `[bin]` if the host expects a CLI
+   binary.
+6. Document the host-specific install path in `README.md` and `skills/kbprep/SKILL.md`.
 
 ## AI Review Backend Selection
 
@@ -83,9 +95,14 @@ You do not need to do anything. Reinstall the plugin in OpenClaw and the
 new version drops in. The six tools you know (`kbprep_preflight`, etc.)
 work exactly as before. The only visible change is the version number.
 
-## Why not just publish a separate npm package for each host?
+## Why Not One Entry Point?
 
-Because the Python core is shared, and splitting the package would mean
-duplicating `python/`, `docs/`, `skills/`, and `CHANGELOG.md` across
-five packages. A monorepo with one `package.json` and one release
-version keeps everything in sync.
+Splitting by entry point lets each host's plugin system stay simple:
+
+- OpenClaw users get the 6 tools auto-registered in OpenClaw — no work needed.
+- Shell users get `kbprep-prepare` as a familiar CLI command.
+- Python users get `subprocess.run(["python", "-m", "kbprep_worker.cli", ...])` as a stable Python entry.
+
+A single super-wrapper that tries to be all things ends up with a fat
+config layer and a slow startup (every host's protocol parser is
+imported even when only one is needed).

@@ -4,33 +4,21 @@ Source-to-clean-Markdown preparation for Obsidian and LLM Wiki workflows.
 
 KBPrep turns a local raw source file (PDF, DOCX, PPT, EPUB, Markdown, code, subtitle, image, …) into readable, audit-friendly Markdown for downstream knowledge-base use. It does **not** build a RAG index, generate wiki pages, or download from remote platforms. Scope is intentionally narrow: prepare the source so a human or downstream tool can read it well.
 
-**Host-agnostic.** Run it as an OpenClaw plugin, an MCP server (Codex / Claude Code / Cursor), a standalone CLI, or a Python library. The Python core is the same in every case; only the host adapter changes. See [`docs/decoupling.md`](docs/decoupling.md) for the architecture.
+**For OpenClaw users**: this is an OpenClaw plugin — install it and call `kbprep_preflight`, `kbprep_analyze`, `kbprep_prepare`, etc. from your OpenClaw agent. See [Quick Start — OpenClaw](#quick-start--openclaw).
 
-## Quick Start
+**For non-OpenClaw hosts**: the Python core is host-agnostic (JSON-on-stdin, JSON-on-stdout). Use the [standalone CLI](#standalone-cli) or the [Python API](#python-api) directly. Each host can wrap the same Python core in its own plugin (Claude Code plugin, Codex plugin, etc.) — see [`docs/decoupling.md`](docs/decoupling.md) for the architecture.
 
-### OpenClaw (existing users)
+## Quick Start — OpenClaw
 
 ```bash
 openclaw plugins install openclaw-kbprep
 ```
 
-Then call `kbprep_preflight`, `kbprep_analyze`, `kbprep_prepare`, etc. from your OpenClaw agent. The six-tool surface is byte-for-byte identical to v0.4.x.
+The six-tool surface (`kbprep_preflight`, `kbprep_analyze`, `kbprep_prepare`, `kbprep_apply_review`, `kbprep_cleanup`, `kbprep_prepare_batch`) is byte-for-byte identical to v0.4.x.
 
-### Codex / Claude Code / Cursor (MCP)
+## Standalone CLI
 
-Add to your MCP client config:
-
-```json
-{
-  "mcpServers": {
-    "kbprep": { "command": "kbprep-mcp" }
-  }
-}
-```
-
-Your agent can then call `kbprep_prepare(input_path, output_root)` etc. exactly as if they were OpenClaw tools.
-
-### Standalone CLI
+For non-OpenClaw hosts, system administrators, self-media operators, and shell scripts:
 
 ```bash
 npm install -g openclaw-kbprep
@@ -39,13 +27,17 @@ kbprep-analyze --input paper.pdf
 kbprep-preflight
 ```
 
-### Python API
+See `kbprep-prepare --help` for the full flag list.
+
+## Python API
 
 ```bash
 pip install -e ./python
-# or, after `pip install -e .` on the package itself:
-kbprep --help   # the `kbprep` console script
+# After install, the `kbprep` console script is on PATH:
+kbprep --help
 ```
+
+Or invoke the worker directly:
 
 ```python
 import json, subprocess
@@ -93,7 +85,7 @@ Any block that carries a "knowledge signal" (operation step, tool/platform, para
 Three interchangeable LLM backends for the `ai_review` mode:
 
 - `local_rules` (default): no AI call. `review_pack.json` is produced; apply edits manually.
-- `openclaw`: OpenClaw subagent (legacy default).
+- `openclaw`: OpenClaw subagent (legacy default for OpenClaw users).
 - `claude_code`: shells out to the `claude` CLI.
 - `codex`: shells out to the `codex` CLI (OpenAI Codex).
 
@@ -113,7 +105,7 @@ If you're not sure yet, do nothing: the default `artifact_policy="keep_latest"` 
 
 ## Documentation
 
-- [`docs/decoupling.md`](docs/decoupling.md) — host-agnostic architecture, how to add a new host
+- [`docs/decoupling.md`](docs/decoupling.md) — host-agnostic architecture, how to add a new host (e.g. a Claude Code plugin wrapper)
 - [`docs/risk-tags.md`](docs/risk-tags.md) — `risk_tags` enum (block-level + page-level)
 - [`skills/kbprep/SKILL.md`](skills/kbprep/SKILL.md) — agent-facing skill description
 - [`CHANGELOG.md`](CHANGELOG.md) — version history

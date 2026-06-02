@@ -1,6 +1,6 @@
 ---
 name: kbprep
-description: Convert local raw source files into clean Markdown for Obsidian or LLM Wiki workflows without summarizing away details. Host-agnostic: works as an OpenClaw plugin, MCP server, standalone CLI, or Python API.
+description: Convert local raw source files into clean Markdown for Obsidian or LLM Wiki workflows without summarizing away details. The OpenClaw plugin is the primary entry point; a standalone CLI is included for non-OpenClaw hosts.
 ---
 
 # KBPrep Skill
@@ -11,20 +11,17 @@ KBPrep does one job: turn a local raw source file into readable, clean Markdown 
 
 It does not build indexes, generate final wiki articles, summarize source material, or fetch remote platform content. For YouTube, Douyin, Xiaohongshu, and similar sources, v1 expects a local subtitle, transcript, saved page, or exported text file.
 
-## Host-Agnostic Design
+## Entry Points
 
-KBPrep runs on **four interchangeable host entry points**. Pick the one that matches your agent runtime:
+The OpenClaw plugin is the primary entry point. The same Python core is also accessible via:
 
-| Entry point | When to use | Where it lives |
-|---|---|---|
-| **OpenClaw plugin** | You use OpenClaw as your agent gateway. | `dist/index.js` (this npm package) |
-| **MCP server** | You use Codex, Claude Code, Cursor, or any MCP-compatible agent. | `kbprep-mcp` binary (stdio transport) |
-| **Standalone CLI** | You run kbprep from a shell, Makefile, or cron. | `kbprep-prepare` / `kbprep-analyze` / etc. |
-| **Python API** | You write a Python script that imports the worker. | `from kbprep_worker import prepare` |
+- **OpenClaw plugin**: `kbprep_preflight`, `kbprep_analyze`, `kbprep_prepare`, `kbprep_apply_review`, `kbprep_cleanup`, `kbprep_prepare_batch`
+- **Standalone CLI** (for non-OpenClaw hosts and shell scripts): `kbprep-prepare`, `kbprep-analyze`, `kbprep-preflight`, `kbprep-apply-review`, `kbprep-cleanup`, `kbprep-batch`
+- **Python API** (for Python scripts and notebooks): `from kbprep_worker.cli` or `subprocess.run(["python", "-m", "kbprep_worker.cli", ...])`
 
-All four entry points share the same Python worker (`kbprep_worker/`), the same JSON envelope on stdout, and the same `~/.cache/kbprep` runtime. The TypeScript host layer is split into adapters under `src/adapters/`.
+All three entry points share the same Python worker (`kbprep_worker/`), the same JSON envelope on stdout, and the same plugin-local venv.
 
-## Tool Order (any host)
+## Tool Order (any entry point)
 
 1. Run `kbprep_preflight` once for the workspace or output root.
 2. Run `kbprep_analyze` on the source file.
@@ -71,7 +68,7 @@ Batch conversion of a directory; `sample_first` defaults to `true` — the first
 `mode=ai_review` is configurable via `ai_review_backend`:
 
 - `local_rules` (default): no AI call. `review_pack.json` is still produced; apply edits manually.
-- `openclaw`: legacy default for OpenClaw users; calls the OpenClaw subagent runtime.
+- `openclaw`: OpenClaw subagent (used by the OpenClaw plugin path).
 - `claude_code`: shells out to the `claude` CLI (Claude Code).
 - `codex`: shells out to the `codex` CLI (OpenAI Codex).
 
@@ -96,18 +93,6 @@ Set via `kbprep` config (`ai_review_backend: "claude_code"`) or `KBPREP_AI_REVIE
 ```bash
 # OpenClaw auto-loads the plugin from its plugins directory.
 openclaw plugins install openclaw-kbprep
-```
-
-### Codex / Claude Code / Cursor (MCP)
-
-Add to your MCP client config (e.g. `~/.config/claude-code/mcp.json`):
-
-```json
-{
-  "mcpServers": {
-    "kbprep": { "command": "kbprep-mcp" }
-  }
-}
 ```
 
 ### Standalone CLI

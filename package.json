@@ -1,7 +1,7 @@
 {
   "name": "openclaw-kbprep",
   "version": "0.5.0",
-  "description": "Source-to-clean-Markdown preparation for Obsidian and LLM Wiki workflows. Host-agnostic: works as an OpenClaw plugin, MCP server, or standalone CLI.",
+  "description": "Source-to-clean-Markdown preparation for Obsidian and LLM Wiki workflows. OpenClaw plugin with a host-agnostic Python core; standalone CLI included for non-OpenClaw hosts.",
   "type": "module",
   "bin": {
     "kbprep-preflight": "./dist/adapters/standalone/bin/preflight.js",
@@ -9,8 +9,7 @@
     "kbprep-prepare": "./dist/adapters/standalone/bin/prepare.js",
     "kbprep-apply-review": "./dist/adapters/standalone/bin/apply-review.js",
     "kbprep-cleanup": "./dist/adapters/standalone/bin/cleanup.js",
-    "kbprep-batch": "./dist/adapters/standalone/bin/batch.js",
-    "kbprep-mcp": "./dist/adapters/mcp/bin.js"
+    "kbprep-batch": "./dist/adapters/standalone/bin/batch.js"
   },
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
@@ -41,7 +40,6 @@
     }
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
     "typebox": "^1.1.38"
   },
   "devDependencies": {
