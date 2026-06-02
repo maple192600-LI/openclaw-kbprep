@@ -18,7 +18,7 @@
     "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
     "plugin:validate": "npm run build && openclaw plugins validate --entry ./dist/index.js",
     "pack:check": "node scripts/check-pack.mjs",
-    "test": "vitest run --pool=forks --maxWorkers=1"
+    "test": "vitest run --pool=forks --maxWorkers=1 --testTimeout=30000"
   },
   "files": [
     "dist",

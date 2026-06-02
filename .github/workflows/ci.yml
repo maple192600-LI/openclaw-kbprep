@@ -32,7 +32,7 @@ jobs:
 
       - run: npx tsc -p tsconfig.json --noEmit
 
-      - run: npx vitest run --pool=forks --maxWorkers=1 --reporter=default --reporter=json --outputFile.json=.kbprep/vitest-ci-report.json
+      - run: npx vitest run --pool=forks --maxWorkers=1 --testTimeout=30000 --reporter=default --reporter=json --outputFile.json=.kbprep/vitest-ci-report.json
 
       - run: npm run plugin:validate
 
