@@ -1,9 +1,17 @@
 {
   "name": "openclaw-kbprep",
-  "version": "0.4.4",
-  "description": "OpenClaw source-to-clean-Markdown preparation plugin for Obsidian and LLM Wiki workflows.",
+  "version": "0.5.0",
+  "description": "KBPrep source-to-clean-Markdown toolkit with a Python core, standalone CLI, and OpenClaw adapter.",
   "type": "module",
-  "private": true,
+  "license": "MIT",
+  "bin": {
+    "kbprep-preflight": "./dist/adapters/standalone/bin/preflight.js",
+    "kbprep-analyze": "./dist/adapters/standalone/bin/analyze.js",
+    "kbprep-prepare": "./dist/adapters/standalone/bin/prepare.js",
+    "kbprep-apply-review": "./dist/adapters/standalone/bin/apply-review.js",
+    "kbprep-cleanup": "./dist/adapters/standalone/bin/cleanup.js",
+    "kbprep-batch": "./dist/adapters/standalone/bin/batch.js"
+  },
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "docs:serve": "node scripts/serve-docs.mjs",
@@ -16,6 +24,9 @@
     "python/kbprep_worker/**/*.py",
     "python/pyproject.toml",
     "skills",
+    "docs",
+    "CHANGELOG.md",
+    "LICENSE",
     "openclaw.plugin.json",
     "README.md",
     "package.json"
@@ -25,6 +36,11 @@
   },
   "peerDependencies": {
     "openclaw": ">=2026.5.17"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
   },
   "dependencies": {
     "typebox": "^1.1.38"

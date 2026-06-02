@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import entry, { isRuntimeMarkerCurrent, pluginVenvPythonPath, resolvePythonPath } from "./index.js";
+import entry, { isRuntimeMarkerCurrent, kbprepVenvPythonPath, pluginVenvPythonPath, resolvePythonPath } from "./index.js";
 import { getToolPluginMetadata } from "openclaw/plugin-sdk/tool-plugin";
 
 type RegisteredTool = {
@@ -40,18 +40,19 @@ describe("openclaw-kbprep", () => {
     expect(JSON.stringify(metadata?.configSchema)).toContain("mineru_timeout_seconds");
   });
 
-  it("targets a plugin-local Python environment instead of a workspace or system dependency environment", () => {
+  it("targets a KBPrep-local Python environment instead of a workspace or system dependency environment", () => {
     const runtimePath = pluginVenvPythonPath();
 
     expect(runtimePath).toContain(join(".kbprep", "venv"));
+    expect(kbprepVenvPythonPath()).toBe(runtimePath);
     expect(runtimePath).toContain(process.platform === "win32" ? join("Scripts", "python.exe") : join("bin", "python"));
     expect(resolvePythonPath(join(tmpdir(), "kbprep-output"))).not.toContain(join(".openclaw", "workspace-wiki"));
   });
 
-  it("rejects stale plugin-local Python runtime markers instead of reusing wrong environments", () => {
+  it("rejects stale KBPrep-local Python runtime markers instead of reusing wrong environments", () => {
     const packageVersion = JSON.parse(readFileSync("package.json", "utf-8")).version;
     const validMarker = {
-      schema: "kbprep.plugin_venv.v2",
+      schema: "kbprep.local_venv.v1",
       plugin_version: packageVersion,
       python_executable: pluginVenvPythonPath(),
       device_override: "auto",
@@ -62,7 +63,7 @@ describe("openclaw-kbprep", () => {
     };
 
     expect(isRuntimeMarkerCurrent(validMarker)).toBe(true);
-    expect(isRuntimeMarkerCurrent({ ...validMarker, schema: "kbprep.plugin_venv.v1" })).toBe(false);
+    expect(isRuntimeMarkerCurrent({ ...validMarker, schema: "kbprep.plugin_venv.v2" })).toBe(false);
     expect(isRuntimeMarkerCurrent({ ...validMarker, plugin_version: "0.4.0" })).toBe(false);
     expect(isRuntimeMarkerCurrent({ ...validMarker, setup_env: { ok: false } })).toBe(false);
     expect(isRuntimeMarkerCurrent({

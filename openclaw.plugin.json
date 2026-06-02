@@ -2,7 +2,7 @@
   "id": "openclaw-kbprep",
   "name": "KB Prep Tool",
   "description": "Convert raw local files into clean Markdown for Obsidian or LLM Wiki use. It defaults to curated Obsidian knowledge-base output; use standard only for broad cleaned Markdown.",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "configSchema": {
     "type": "object",
     "properties": {
@@ -40,7 +40,7 @@
       },
       "python_path": {
         "type": "string",
-        "description": "Optional absolute path to a base Python executable used only to create the plugin-local .kbprep/venv runtime."
+        "description": "Optional absolute path to a base Python executable used only to create the KBPrep-local .kbprep/venv runtime."
       },
       "ai_review_provider": {
         "type": "string",
