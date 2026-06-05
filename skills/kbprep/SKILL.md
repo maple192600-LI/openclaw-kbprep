@@ -41,11 +41,15 @@ Read-only runtime readiness check before conversion. It reports:
 - MinerU availability and version for PDF/Office/image conversion.
 - Device mode, GPU/CPU hints, model-cache status, memory, disk space, and workspace write permission.
 
-Always check `python_executable`, `mineru_path`, `torch`, `torch_cuda_available`, `torch_cuda_version`, `torch_device_count`, and `mineru_device` before a heavy PDF/Office run. In normal use, `python_executable` must point to the KBPrep-local `.kbprep/venv` runtime. If the user expects GPU but preflight shows CPU torch, rerun setup/preflight so the KBPrep-local venv installs CUDA torch, or set `device_override="cpu"` when GPU is not wanted.
+Always check `python_executable`, `mineru_path`, `torch`, `torch_cuda_available`, `torch_cuda_version`, `torch_device_count`, and `mineru_device` before a heavy PDF/Office run. In normal use, `python_executable` must point to the KBPrep-local `.kbprep/venv` runtime. Do not ask ordinary users to choose CPU or GPU: omit `device_override` and let KBPrep select the best available mode. Set `device_override="cpu"` only when GPU setup is explicitly unwanted.
 
 Runtime rule: KBPrep creates and runs its own `.kbprep/venv` inside the package directory. `python_path` is only an optional bootstrap interpreter for creating that venv; it is not the dependency runtime. The worker must resolve MinerU beside the KBPrep-local venv Python and must not fall back to a system-wide MinerU or unrelated Python environment.
 
 If full conversion dependencies are missing, text-like files may still work, but PDF/Office/image conversion should be treated as not ready until preflight is clean enough for the intended file type.
+
+## Language Coverage
+
+KBPrep v0.5 is tuned for Simplified Chinese self-media, course, and knowledge-base material. English support is best-effort and includes English step markers, URLs, CLI flags, prompts, and common subscription/join CTA patterns. Other languages are not yet tested. Check `quality_report.json` `language_detected` before accepting non-Chinese runs.
 
 ### `kbprep_analyze`
 

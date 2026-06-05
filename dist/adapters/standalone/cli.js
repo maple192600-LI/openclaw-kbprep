@@ -6,7 +6,7 @@ const HELP = {
     preflight: [
         "Usage: kbprep-preflight [--workdir <dir>] [--profile lite|standard] [--config-file <file>]",
         "",
-        "Checks KBPrep runtime readiness without requiring OpenClaw.",
+        "Checks KBPrep runtime readiness without requiring OpenClaw. Omit device_override to let KBPrep choose CPU/GPU automatically.",
     ].join("\n"),
     diagnose: [
         "Usage: kbprep-analyze --input <file> [--output <dir>] [--source-type auto|pdf_like|markdown_note|generic_block|subtitle_transcript] [--config-file <file>]",
@@ -227,7 +227,9 @@ function readDeviceOverride(options, fileConfig) {
     const raw = readString(options, "device_override") ?? readOptionalString(fileConfig.device_override);
     if (!raw)
         return undefined;
-    if (raw === "auto" || raw === "cuda" || raw === "cpu")
+    if (raw === "auto")
+        return undefined;
+    if (raw === "cuda" || raw === "cpu")
         return raw;
     throw new Error(`Invalid device_override: ${raw}`);
 }

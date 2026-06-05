@@ -122,10 +122,10 @@ On first use, KBPrep creates its own Python runtime at `.kbprep/venv` inside the
 KBPrep normally runs the worker through this KBPrep-local `.kbprep/venv`. `python_path` is only an optional bootstrap interpreter used to create that venv; it is not treated as the dependency runtime.
 
 The worker is also isolated from user-site packages (`PYTHONNOUSERSITE=1`), and MinerU is resolved only from the selected venv's `Scripts/` or `bin/` directory. A system-wide `mineru` on PATH is not used.
-When an NVIDIA driver is detected and the KBPrep-local torch is CPU-only, setup installs pinned CUDA wheels (`torch==2.8.0`, `torchvision==0.23.0`, cu126 index) into `.kbprep/venv` and then re-checks torch in a fresh Python process. Set config `device_override="cpu"` to skip CUDA wheel installation.
-The worker dependency set pins MinerU `3.2.1` and PyMuPDF `1.27.2.3`. PyMuPDF powers the fast trusted PDF text-layer route; MinerU/OCR is used when diagnosis says the text layer is missing or unsafe.
+When an NVIDIA driver is detected and the KBPrep-local torch is CPU-only, setup installs compatible CUDA wheels (`torch>=2.8,<3`, `torchvision>=0.23,<1`, cu126 index) into `.kbprep/venv` and then re-checks torch in a fresh Python process. Omit `device_override` for normal automatic CPU/GPU selection; set config `device_override="cpu"` only when you explicitly want to skip CUDA setup.
+The worker dependency set supports MinerU `>=3.2.1,<4` and PyMuPDF `>=1.27,<2`. PyMuPDF powers the fast trusted PDF text-layer route; MinerU/OCR is used when diagnosis says the text layer is missing or unsafe.
 The setup result is written to `.kbprep/runtime-ready.json` so the selected Python path, CUDA action, and detected torch state are traceable.
-The ready marker includes the KBPrep version, selected Python path, worker dependency spec, and `device_override`. If any of those no longer match, KBPrep deletes only its own `.kbprep/venv` and marker, then rebuilds the runtime instead of reusing a stale or wrong environment.
+The ready marker includes the KBPrep version, selected Python path, worker dependency spec, requested device override, and actual selected device. If any of those no longer match, KBPrep deletes only its own `.kbprep/venv` and marker, then rebuilds the runtime instead of reusing a stale or wrong environment.
 
 Run `kbprep_preflight` before heavy PDF/Office conversion and check:
 
@@ -171,6 +171,21 @@ The Python worker is the core API underneath the Node CLI and OpenClaw adapter. 
 PYTHONPATH=python python -m kbprep_worker.cli --help
 printf '{"workspace_path":".kbprep/python-smoke","profile":"lite"}' | PYTHONPATH=python python -m kbprep_worker.cli preflight --json-stdin
 ```
+
+## Supported Languages
+
+KBPrep v0.5 is tuned for Simplified Chinese self-media, course, and knowledge-base source material. English support is best-effort: detail-retention and CTA detection include English step, CLI flag, URL, prompt, and subscription/join-call patterns, and `quality_report.json` records `language_detected` as `zh`, `en`, `mixed`, or `other`. Other languages are not yet tested.
+
+## Installing Python Worker Dependencies With uv
+
+The npm/OpenClaw runtime creates its own `.kbprep/venv`, so most users do not need to install Python dependencies manually. For direct worker development, `uv` is the preferred fast installer:
+
+```bash
+uv pip install --system -e ./python
+uv pip install --system -e "./python[cuda]"
+```
+
+Use the CUDA extra only for machines where GPU OCR validation is required. Normal runtime validation should let KBPrep choose CPU/GPU automatically.
 
 Worker commands write one JSON envelope to stdout:
 

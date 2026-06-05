@@ -2,15 +2,21 @@
 
 This file tracks known product and engineering gaps that are not hidden defects.
 
-## Current Open Issues
+## Release 0.5.1 Hardening Closed In `codex/kbprep-0.5.1-hardening`
 
-- `#2`: migrate AI review to a reusable backend abstraction. Source now has a generic backend interface; remaining work is adding real non-OpenClaw provider adapters.
-- `#3`: split `python/kbprep_worker/prepare.py` into smaller stage modules.
-- `#4`: split `docs/index.html` inline CSS into separate assets.
-- `#5`: simplify `device_override="auto"` semantics.
-- `#6`: declare supported languages and keep improving English detail-signal regex coverage.
-- `#7`: document uv install path and improve CI cache behavior.
-- `#8`: replace hard dependency pins with compatible-release pins and add a scheduled upgrade-test job.
+- `#2`: AI review now routes through a reusable backend abstraction. OpenClaw remains the default adapter; `local_rules`, `claude_code`, and `codex` are explicit backend names for future provider implementations.
+- `#3`: `python/kbprep_worker/prepare.py` is now a thin orchestrator entrypoint with the heavy pipeline moved into stage modules.
+- `#4`: `docs/index.html` no longer carries inline CSS; page styling lives in `docs/assets/style.css`.
+- `#5`: `device_override` no longer exposes `auto`. Unset means automatic CPU/GPU selection; `cpu` and `cuda` are advanced forced overrides.
+- `#6`: README/SKILL now state supported language scope, quality reports include `language_detected`, and English detail-signal/CTA handling has test coverage.
+- `#7`: uv-based worker installation is documented and CI caches uv/Python dependency paths.
+- `#8`: MinerU/PyMuPDF/torch constraints use compatible ranges, with scheduled dependency-upgrade CI coverage.
+
+## Post-Release Roadmap
+
+- Add real non-OpenClaw provider implementations behind the `AIReviewBackend` interface.
+- Continue splitting `python/kbprep_worker/stages/pipeline.py` into smaller stage-specific files after the release branch is stable.
+- Expand language-specific signal tests beyond the current Chinese/English coverage.
 
 ## Closed Workflow Risks
 

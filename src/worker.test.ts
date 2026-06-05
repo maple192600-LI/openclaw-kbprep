@@ -386,8 +386,8 @@ describe("kbprep worker pipeline", () => {
         "result = setup_env.setup_gpu('venv-python')",
         "pip_calls = [cmd for cmd in calls if cmd[:3] == ['venv-python', '-m', 'pip']]",
         "assert len(pip_calls) == 1, calls",
-        "assert 'torch==2.8.0' in pip_calls[0], pip_calls",
-        "assert 'torchvision==0.23.0' in pip_calls[0], pip_calls",
+        "assert 'torch>=2.8,<3' in pip_calls[0], pip_calls",
+        "assert 'torchvision>=0.23,<1' in pip_calls[0], pip_calls",
         "assert '--force-reinstall' in pip_calls[0], pip_calls",
         "assert 'https://download.pytorch.org/whl/cu126' in pip_calls[0], pip_calls",
         "assert calls[-2][2] == setup_env._torch_probe_code(), calls",
@@ -1164,6 +1164,47 @@ describe("kbprep worker pipeline", () => {
       expect(envelope.ok).toBe(true);
       expect(cleaned).toContain("不得诱导关注公众号");
       expect(discarded).not.toContain("不得诱导关注公众号");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("detects English language and preserves tutorial CTA examples", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-english-cta-"));
+    try {
+      const inputPath = path.join(root, "english.md");
+      const outputRoot = path.join(root, "out");
+      writeFileSync(
+        inputPath,
+        [
+          "# Platform Policy Tutorial",
+          "",
+          "Step 1: record threshold=0.8 and retry_count=3 before changing the campaign.",
+          "",
+          "Policy example: do not write \"scan the QR code to join our Discord\" in the landing page CTA.",
+          "",
+          "Scan the QR code to join our Discord and claim your free trial.",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare", {
+        input_path: inputPath,
+        output_root: outputRoot,
+        profile: "standard",
+        mode: "rules_only",
+        language: "en",
+        force: true,
+      });
+
+      const quality = JSON.parse(readFileSync(path.join(outputRoot, "quality_report.json"), "utf8"));
+      const cleaned = readFileSync(envelope.data.latest_outputs.cleaned_md, "utf8");
+      const discarded = readFileSync(envelope.data.latest_outputs.discarded_md, "utf8");
+      expect(quality.language_detected).toBe("en");
+      expect(cleaned).toContain("threshold=0.8");
+      expect(cleaned).toContain("Policy example");
+      expect(cleaned).not.toContain("claim your free trial");
+      expect(discarded).toContain("claim your free trial");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

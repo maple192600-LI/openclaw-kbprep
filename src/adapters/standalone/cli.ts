@@ -32,7 +32,7 @@ const HELP: Record<StandaloneCommand, string> = {
   preflight: [
     "Usage: kbprep-preflight [--workdir <dir>] [--profile lite|standard] [--config-file <file>]",
     "",
-    "Checks KBPrep runtime readiness without requiring OpenClaw.",
+    "Checks KBPrep runtime readiness without requiring OpenClaw. Omit device_override to let KBPrep choose CPU/GPU automatically.",
   ].join("\n"),
   diagnose: [
     "Usage: kbprep-analyze --input <file> [--output <dir>] [--source-type auto|pdf_like|markdown_note|generic_block|subtitle_transcript] [--config-file <file>]",
@@ -257,7 +257,8 @@ function readPatchJson(options: Record<string, string | boolean>): unknown {
 function readDeviceOverride(options: Record<string, string | boolean>, fileConfig: Record<string, unknown>): RuntimeConfig["device_override"] {
   const raw = readString(options, "device_override") ?? readOptionalString(fileConfig.device_override);
   if (!raw) return undefined;
-  if (raw === "auto" || raw === "cuda" || raw === "cpu") return raw;
+  if (raw === "auto") return undefined;
+  if (raw === "cuda" || raw === "cpu") return raw;
   throw new Error(`Invalid device_override: ${raw}`);
 }
 

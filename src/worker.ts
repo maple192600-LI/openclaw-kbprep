@@ -29,7 +29,7 @@ export interface WorkerCallOptions {
 }
 
 export interface WorkerConfig {
-  device_override?: "auto" | "cuda" | "cpu";
+  device_override?: "cuda" | "cpu";
   max_cpu_threads?: number;
   min_free_memory_gb?: number;
   mineru_timeout_seconds?: number;
@@ -98,7 +98,7 @@ export async function callWorker<T = Record<string, unknown>>(
   env.PYTHONIOENCODING = "utf-8";
 
   // Pass worker runtime config as environment variables.
-  if (options.config?.device_override && options.config.device_override !== "auto") {
+  if (options.config?.device_override) {
     env.MINERU_DEVICE_MODE = options.config.device_override;
   }
   if (options.config?.max_cpu_threads) {

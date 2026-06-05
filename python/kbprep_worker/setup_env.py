@@ -12,7 +12,7 @@ import sys
 logger = logging.getLogger(__name__)
 
 CUDA_TORCH_INDEX_URL = "https://download.pytorch.org/whl/cu126"
-CUDA_TORCH_PACKAGES = ["torch==2.8.0", "torchvision==0.23.0"]
+CUDA_TORCH_PACKAGES = ["torch>=2.8,<3", "torchvision>=0.23,<1"]
 CUDA_TORCH_INSTALL_TIMEOUT_SECONDS = int(os.environ.get("KBPREP_CUDA_TORCH_INSTALL_TIMEOUT_SECONDS", "1500"))
 
 
@@ -96,7 +96,7 @@ def setup_gpu(venv_python: str | None = None, device_override: str | None = None
         "torch_cuda": bool(torch_probe.get("cuda_available")),
         "gpu": get_gpu_info(python),
         "device": str(torch_probe.get("device") or "cpu"),
-        "device_override": device_override or "auto",
+        "device_override": device_override,
         "cuda_torch_index_url": CUDA_TORCH_INDEX_URL,
         "cuda_torch_packages": CUDA_TORCH_PACKAGES,
         "actions_taken": [],

@@ -254,6 +254,7 @@ def run_quality_check(
     report = {
         "source_sha256": diagnosis.get("file_id", ""),
         "source_type": source_type,
+        "language_detected": _detect_language_from_blocks(blocks),
         "total_blocks": total_blocks,
         "keep_blocks": keep_count,
         "discard_blocks": discard_count,
@@ -313,6 +314,22 @@ def _read_json_file(path: Path) -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _detect_language_from_blocks(blocks: list[dict]) -> str:
+    text = "\n".join(str(block.get("text", "")) for block in blocks)
+    if not text.strip():
+        return "other"
+    letters = sum(1 for char in text if char.isalpha())
+    cjk = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
+    if letters == 0:
+        return "other"
+    ratio = cjk / letters
+    if ratio >= 0.2:
+        return "zh"
+    if ratio <= 0.05:
+        return "en"
+    return "mixed"
 
 
 def _source_text_layer_status(diagnosis: dict, conversion_report: dict) -> dict:

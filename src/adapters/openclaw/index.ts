@@ -15,8 +15,8 @@ const sourceTypeSchema = Type.Union([
 
 const configSchema = Type.Object({
   device_override: Type.Optional(
-    Type.Union([Type.Literal("auto"), Type.Literal("cuda"), Type.Literal("cpu")], {
-      description: "Force device mode. Default 'auto' (detect).",
+    Type.Union([Type.Literal("cuda"), Type.Literal("cpu")], {
+      description: "Advanced override for device mode. Omit to let KBPrep select the best available CPU/GPU mode automatically.",
     })
   ),
   max_cpu_threads: Type.Optional(
@@ -40,12 +40,18 @@ const configSchema = Type.Object({
   ai_review_provider: Type.Optional(
     Type.String({ description: "Optional provider override for mode='ai_review'." })
   ),
+  ai_review_backend: Type.Optional(
+    Type.Union([Type.Literal("openclaw"), Type.Literal("local_rules"), Type.Literal("claude_code"), Type.Literal("codex")], {
+      description: "AI review backend. Default 'openclaw'. Use local_rules to skip model calls safely.",
+    })
+  ),
   ai_review_model: Type.Optional(
     Type.String({ description: "Optional model override for mode='ai_review'." })
   ),
 }, { additionalProperties: false });
 
 type PluginConfig = RuntimeConfig & {
+  ai_review_backend?: "openclaw" | "local_rules" | "claude_code" | "codex";
   ai_review_provider?: string;
   ai_review_model?: string;
 };
@@ -182,6 +188,7 @@ export default defineToolPlugin({
 
         return maybeRunAiReview(result, {
           mode: effectiveMode,
+          ai_review_backend: config.ai_review_backend,
           ai_review_provider: params.ai_review_provider,
           ai_review_model: params.ai_review_model,
         }, config, ctx, {

@@ -27,6 +27,18 @@ The root `src/index.ts` is intentionally only a compatibility shim for OpenClaw'
 - `src/adapters/openclaw/` may register OpenClaw tools and read OpenClaw plugin config.
 - `src/adapters/standalone/` may parse command-line flags and print JSON results.
 - Future Codex, Claude Code, Cursor, or MCP support must be thin wrappers around the same worker contract.
+- `C:\Users\Administrator\Documents\Projects\kbprep` is the development checkout. `.openclaw\workspace\openclaw-kbprep` is an OpenClaw install/runtime workspace and must not be treated as the source of truth for development.
+
+## Python Dependency Installation
+
+The npm/OpenClaw runtime creates a KBPrep-local `.kbprep/venv` automatically. For direct worker development, prefer `uv` for fast compatible dependency resolution:
+
+```bash
+uv pip install --system -e ./python
+uv pip install --system -e "./python[cuda]"
+```
+
+The CUDA extra is only for GPU validation. Normal runtime setup omits `device_override` and lets KBPrep choose the best available CPU/GPU mode.
 
 ## Why PR #9 Was Not Merged
 
