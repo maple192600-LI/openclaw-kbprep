@@ -189,6 +189,7 @@ def run(data: dict) -> None:
             _update_latest_json(output_root, run_p, latest_outputs, previous_quality, source_type)
             published = True
 
+    updated_obsidian_complete = _obsidian_complete_path(run_p / "obsidian")
     ok(data={
         "ok": True,
         "applied": applied,
@@ -202,6 +203,7 @@ def run(data: dict) -> None:
             "audit_md": str(run_p / "audit.md"),
             "obsidian_dir": str(run_p / "obsidian") if (run_p / "obsidian").exists() else None,
             "obsidian_index": str(run_p / "obsidian" / "00-索引.md") if (run_p / "obsidian" / "00-索引.md").exists() else None,
+            "obsidian_complete": str(updated_obsidian_complete) if updated_obsidian_complete else None,
             "quality_report": str(run_p / "quality_report.json"),
         },
         "latest_outputs": latest_outputs,
@@ -266,6 +268,7 @@ def _source_title_from_previous_quality(previous_quality: dict, run_p: Path) -> 
 
 def _run_output_paths(run_p: Path) -> dict:
     has_obsidian = (run_p / "obsidian").exists()
+    obsidian_complete = _obsidian_complete_path(run_p / "obsidian")
     return {
         "diagnosis_report": str(run_p / "diagnosis_report.json"),
         "blocks_jsonl": str(run_p / "blocks.jsonl"),
@@ -280,6 +283,7 @@ def _run_output_paths(run_p: Path) -> dict:
         "images_dir": str(run_p / "images"),
         "obsidian_dir": str(run_p / "obsidian") if has_obsidian else None,
         "obsidian_index": str(run_p / "obsidian" / "00-索引.md") if (run_p / "obsidian" / "00-索引.md").exists() else None,
+        "obsidian_complete": str(obsidian_complete) if obsidian_complete else None,
     }
 
 
@@ -339,6 +343,7 @@ def _publish_latest_outputs(run_p: Path, output_root: Path, profile: str = "stan
         shutil.copytree(src_obsidian, dst_obsidian)
 
     obsidian_index = dst_obsidian / "00-索引.md"
+    obsidian_complete = _obsidian_complete_path(dst_obsidian)
     review_pack = output_root / "review_pack.json"
     return {
         "converted_md": str(output_root / "converted.md"),
@@ -357,8 +362,21 @@ def _publish_latest_outputs(run_p: Path, output_root: Path, profile: str = "stan
         "images_dir": str(output_root / "images"),
         "obsidian_dir": str(dst_obsidian) if dst_obsidian.exists() else None,
         "obsidian_index": str(obsidian_index) if obsidian_index.exists() else None,
+        "obsidian_complete": str(obsidian_complete) if obsidian_complete else None,
         "review_pack": str(review_pack) if review_pack.exists() else None,
     }
+
+
+def _obsidian_complete_path(obsidian_dir: Path) -> Path | None:
+    if not obsidian_dir.exists():
+        return None
+    legacy = obsidian_dir / "01-完整正文.md"
+    if legacy.exists():
+        return legacy
+    candidates = [path for path in obsidian_dir.glob("*.md") if path.name != "00-索引.md"]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
 
 
 def _input_path_from_latest(output_root: Path) -> Path | None:

@@ -339,7 +339,8 @@ def render_obsidian_vault(
     discarded_blocks = [b for b in blocks if b.get("status") == "discard"]
 
     complete_body = _join_blocks(kept_blocks)
-    (vault_dir / "01-完整正文.md").write_text(
+    complete_filename = complete_body_filename(source_title)
+    (vault_dir / complete_filename).write_text(
         "\n".join([
             "---",
             f'title: "{_yaml_safe(source_title)}"',
@@ -355,7 +356,7 @@ def render_obsidian_vault(
     )
 
     note_entries, source_map = _render_topic_notes(kept_blocks, vault_dir)
-    _render_index(vault_dir, source_title, note_entries, kept_blocks, discarded_blocks, review_blocks)
+    _render_index(vault_dir, source_title, complete_filename, note_entries, kept_blocks, discarded_blocks, review_blocks)
     _render_audit_file(audit_dir / "discarded.md", discarded_blocks)
     _render_audit_file(audit_dir / "review_needed.md", review_blocks)
     _render_cleaning_report(
@@ -370,6 +371,13 @@ def render_obsidian_vault(
         "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in source_map),
         encoding="utf-8",
     )
+
+
+def complete_body_filename(source_title: str) -> str:
+    stem = _safe_filename(source_title)
+    if stem in {"00-索引", "_audit", "images", "认知", "方法", "案例"}:
+        stem = f"{stem}-完整正文"
+    return f"{stem}.md"
 
 
 def sanitize_heading_text(text: str) -> str:
@@ -574,11 +582,13 @@ def _render_topic_notes(kept_blocks: list[dict], vault_dir: Path) -> tuple[list[
 def _render_index(
     vault_dir: Path,
     source_title: str,
+    complete_filename: str,
     note_entries: list[dict],
     kept_blocks: list[dict],
     discarded_blocks: list[dict],
     review_blocks: list[dict],
 ) -> None:
+    complete_link = complete_filename.removesuffix(".md")
     lines = [
         "---",
         f'title: "{_yaml_safe(source_title)}"',
@@ -589,7 +599,7 @@ def _render_index(
         "",
         "## 入口",
         "",
-        "- [[01-完整正文]]",
+        f"- [[{complete_link}|完整正文]]",
         "- [[_audit/cleaning-report|清洗报告]]",
         "- [[_audit/review_needed|待复核内容]]",
         "",

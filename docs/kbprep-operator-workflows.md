@@ -16,7 +16,7 @@ The operator workflows below do not replace the Python worker and do not run in 
 4. Inspect `quality_report.json`; strict errors block acceptance.
 5. Inspect `discarded.md` and `review_needed.md`; do not accept silent loss of concrete steps, tools, parameters, links, prompts, code, tables, or numbers.
 6. Confirm the final deliverable:
-   - `curated_obsidian_kb`: `latest_outputs.final_artifact_type="obsidian_dir"`, `obsidian_dir`, and `obsidian_index`.
+   - `curated_obsidian_kb`: `latest_outputs.final_artifact_type="obsidian_dir"`, `obsidian_dir`, `obsidian_index`, and `obsidian_complete`.
    - `standard`: `latest_outputs.final_artifact_type="markdown"` and `final_md`.
 7. Run `kbprep_cleanup(action="finalize")` only after the result is accepted.
 8. Run `kbprep_prepare_batch` only after the representative sample passes.

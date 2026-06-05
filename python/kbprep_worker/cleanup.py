@@ -262,6 +262,7 @@ def _final_artifact_from_outputs(latest_outputs: dict[str, Any], *, file_label: 
             "final_artifact_type": "obsidian_dir",
             "obsidian_dir": str(obsidian_dir),
             "obsidian_index": str(obsidian_index),
+            "obsidian_complete": latest_outputs.get("obsidian_complete"),
         }
         return {
             "manifest_fields": manifest_fields,

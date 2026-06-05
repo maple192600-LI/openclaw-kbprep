@@ -64,7 +64,7 @@ kbprep_prepare(input_path, output_root, profile="curated_obsidian_kb")
 ```
 
 - `obsidian/00-索引.md`: wiki entry point with links to generated notes
-- `obsidian/01-完整正文.md`: cleaned full text for reading/search
+- `obsidian/<source-title>.md`: cleaned full text for reading/search, named from the source title or source filename so batch outputs do not all collide as the same generic note
 - `obsidian/认知/`: concept and viewpoint notes
 - `obsidian/方法/`: workflow, method, tool, SOP, and prompt notes
 - `obsidian/案例/`: case-oriented notes
