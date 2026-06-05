@@ -722,6 +722,33 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("excludes slide deck page furniture and translator marketing back matter from body-loss gates", () => {
+    runPython(
+      [
+        "from pathlib import Path",
+        "import tempfile",
+        "from kbprep_worker.quality import run_quality_check",
+        "run_dir = Path(tempfile.mkdtemp())",
+        "(run_dir / 'chunks').mkdir()",
+        "(run_dir / 'chunks' / 'chunk_001.md').write_text('MVP 阶段的核心目标不是把产品做完整，而是验证最小闭环。' * 80, encoding='utf-8')",
+        "(run_dir / 'cleaned.md').write_text('## MVP 阶段\\n\\nMVP 阶段的核心目标不是把产品做完整，而是验证最小闭环。', encoding='utf-8')",
+        "blocks = [",
+        "  {'block_id': 'body1', 'status': 'keep', 'type': 'paragraph', 'text': 'MVP 阶段的核心目标不是把产品做完整，而是验证最小闭环。'},",
+        "  {'block_id': 'page1', 'status': 'discard', 'type': 'page_marker', 'text': '<!-- page: 15 -->'},",
+        "  {'block_id': 'divider1', 'status': 'discard', 'type': 'slide_chapter_divider', 'text': 'Chapter 4\\nMVP 阶段\\n15'},",
+        "  {'block_id': 'back1', 'status': 'discard', 'type': 'translator_marketing_back_matter', 'text': '译后记：欢迎在 B 站、小红书、公众号和 huasheng.ai 找到我。'},",
+        "]",
+        "report = run_quality_check(blocks, str(run_dir), 'pdf_like', {'file_id': 'slide-furniture-test'})",
+        "assert report['discard_ratio'] == 0, report",
+        "assert report['discard_ratio_excluded_blocks'] == 3, report",
+        "assert report['coverage_ratio'] > 0.95, report",
+        "assert report['detail_retention']['discarded_detail_block_ids'] == [], report",
+        "assert not report['strict_errors'], report",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("treats a broken PDF text layer as superseded after OCR conversion succeeds", () => {
     runPython(
       [
@@ -1396,6 +1423,47 @@ describe("kbprep worker pipeline", () => {
         "    assert 'layout_table_artifact' in discarded, discarded",
         "    assert 'drop_brand_program_packaging_for_text_kb' in discarded, discarded",
         "    assert '\"block_id\": \"body\"' in source_map, source_map",
+      ].join("\n"),
+      [],
+    );
+  });
+
+  it("removes slide deck page markers, chapter divider slides, and translator marketing back matter from curated Obsidian output", () => {
+    runPython(
+      [
+        "from pathlib import Path",
+        "from tempfile import TemporaryDirectory",
+        "from kbprep_worker.obsidian_kb import apply_curated_obsidian_policy, render_obsidian_vault",
+        "with TemporaryDirectory() as tmp:",
+        "    run_dir = Path(tmp)",
+        "    blocks = [",
+        "        {'block_id': 'page_marker', 'type': 'paragraph', 'status': 'keep', 'text': '<!-- page: 8 -->', 'heading_path': [], 'page_start': 7, 'page_end': 7},",
+        "        {'block_id': 'divider_intro', 'type': 'paragraph', 'status': 'keep', 'text': 'Chapter 1\\n创业生命周期，\\n为 2026 重新启动\\n3', 'heading_path': [], 'page_start': 2, 'page_end': 2},",
+        "        {'block_id': 'body_intro', 'type': 'paragraph', 'status': 'keep', 'text': 'Chapter 1\\n创业生命周期，\\n为 2026 重新启动创业生命周期，为 2026 重新启动AI 正在重塑创业公司的搭建方式。\\n4', 'heading_path': [], 'page_start': 3, 'page_end': 3},",
+        "        {'block_id': 'divider', 'type': 'paragraph', 'status': 'keep', 'text': 'Chapter 4\\nMVP 阶段\\n15', 'heading_path': [], 'page_start': 14, 'page_end': 14},",
+        "        {'block_id': 'body', 'type': 'paragraph', 'status': 'keep', 'text': 'Chapter 4\\nMVP 阶段MVP 阶段的核心目标不是把产品做完整，而是验证一个最小闭环。\\n16', 'heading_path': [], 'page_start': 15, 'page_end': 15},",
+        "        {'block_id': 'afterword', 'type': 'paragraph', 'status': 'keep', 'text': '译后记这本《创始人行动手册》是 Anthropic 2026 年 5 月发布的官方手册。\\n本译本仅供个人学习与内部研究使用，不做商业发行。\\n如果你也在用 AI 做产品、做公司，欢迎在下面这些地方找到我：\\nB 站花叔v · space.bilibili.com/14097567\\nX\\n@AlchainHust\\nYouTube\\n@Alchain\\n小红书\\n花叔\\n公众号\\n花叔\\n官网\\nhuasheng.ai', 'heading_path': [], 'page_start': 35, 'page_end': 35},",
+        "    ]",
+        "    blocks = apply_curated_obsidian_policy(blocks)",
+        "    render_obsidian_vault(blocks, str(run_dir), source_title='founders-playbook', source_hash='sha', run_id='run')",
+        "    complete = (run_dir / 'obsidian' / '01-完整正文.md').read_text(encoding='utf-8')",
+        "    discarded = (run_dir / 'obsidian' / '_audit' / 'discarded.md').read_text(encoding='utf-8')",
+        "    assert '<!-- page:' not in complete, complete",
+        "    assert 'Chapter 4\\nMVP 阶段\\n15' not in complete, complete",
+        "    assert '## 创业生命周期， 为 2026 重新启动' in complete, complete",
+        "    assert '创业生命周期，为 2026 重新启动AI 正在' not in complete, complete",
+        "    assert 'AI 正在重塑创业公司的搭建方式。' in complete, complete",
+        "    assert '## MVP 阶段' in complete, complete",
+        "    assert 'MVP 阶段的核心目标' in complete, complete",
+        "    assert '\\n4\\n' not in complete, complete",
+        "    assert '\\n16\\n' not in complete, complete",
+        "    assert 'B 站花叔v' not in complete, complete",
+        "    assert 'huasheng.ai' not in complete, complete",
+        "    assert '译后记' not in complete, complete",
+        "    assert 'slide_chapter_divider' in discarded, discarded",
+        "    assert 'translator_marketing_back_matter' in discarded, discarded",
+        "    assert 'B 站花叔v' in discarded, discarded",
+        "    assert 'huasheng.ai' in discarded, discarded",
       ].join("\n"),
       [],
     );

@@ -381,6 +381,9 @@ def _allows_cta_keyword_context(block: dict) -> bool:
 
 
 DISCARDED_BODY_LOSS_EXEMPT_TYPES = {
+    "page_marker",
+    "slide_chapter_divider",
+    "translator_marketing_back_matter",
     "transcript_filler",
     "marketing_cta",
     "marketing_wrapper",
@@ -601,6 +604,9 @@ def _detail_categories(block: dict) -> set[str]:
 def _is_known_pollution_without_detail(block: dict, categories: set[str]) -> bool:
     block_type = block.get("type")
     if block_type not in {
+        "page_marker",
+        "slide_chapter_divider",
+        "translator_marketing_back_matter",
         "marketing_cta",
         "marketing_wrapper",
         "author_identity",
@@ -621,6 +627,9 @@ def _is_known_pollution_without_detail(block: dict, categories: set[str]) -> boo
     }:
         return False
     if block_type in {
+        "page_marker",
+        "slide_chapter_divider",
+        "translator_marketing_back_matter",
         "author_identity",
         "author_intro",
         "author_profile_links",
