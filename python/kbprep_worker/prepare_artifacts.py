@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 def latest_output_paths(root_p: Path, input_p: Path | None = None, profile: str = "standard") -> dict:
     """Return stable top-level paths for the latest successful run."""
     source_side_final = profile != "curated_obsidian_kb"
+    final_artifact_type = "markdown" if source_side_final else "obsidian_dir"
     final_md = (source_final_markdown_path(input_p) if input_p else root_p / "cleaned.md") if source_side_final else None
     final_assets_dir = (source_final_assets_dir(input_p) if input_p else root_p / "images") if source_side_final else None
     obsidian_dir = root_p / "obsidian"
@@ -29,6 +30,7 @@ def latest_output_paths(root_p: Path, input_p: Path | None = None, profile: str 
         "diagnosis_report": str(root_p / "diagnosis_report.json"),
         "blocks_jsonl": str(root_p / "blocks.jsonl"),
         "cleaned_md": str(root_p / "cleaned.md"),
+        "final_artifact_type": final_artifact_type,
         "final_md": str(final_md) if final_md else None,
         "final_assets_dir": str(final_assets_dir) if final_assets_dir else None,
         "discarded_md": str(root_p / "discarded.md"),

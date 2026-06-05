@@ -87,23 +87,16 @@ def _finalize_single(root: Path, *, confirm_review_needed: bool, dry_run: bool) 
 
     latest = _read_json(latest_path)
     latest_outputs = latest.get("latest_outputs", {})
-    final_md_raw = latest_outputs.get("final_md")
+    try:
+        final_artifact = _final_artifact_from_outputs(latest_outputs, file_label=latest.get("input_path"))
+    except ValueError as exc:
+        fail(
+            "KBPREP_FINAL_OUTPUT_MISSING",
+            f"{exc}. Cleanup stopped to avoid deleting audit evidence.",
+            details={"latest_json": str(latest_path), "output_root": str(root), "latest_outputs": latest_outputs},
+        )
     source_path = latest.get("input_path")
     review_needed = root / "review_needed.md"
-
-    if not final_md_raw:
-        fail(
-            "KBPREP_FINAL_OUTPUT_MISSING",
-            "latest.json does not record a source-side final Markdown path. Cleanup stopped.",
-            details={"latest_json": str(latest_path), "output_root": str(root)},
-        )
-    final_md = Path(final_md_raw)
-    if not final_md.exists():
-        fail(
-            "KBPREP_FINAL_OUTPUT_MISSING",
-            "Final source-side Markdown is missing. Cleanup stopped to avoid deleting audit evidence.",
-            details={"final_md": str(final_md), "output_root": str(root)},
-        )
 
     if _has_review_content(review_needed) and not confirm_review_needed:
         fail(
@@ -120,14 +113,13 @@ def _finalize_single(root: Path, *, confirm_review_needed: bool, dry_run: bool) 
         "source_path": source_path,
         "source_sha256": latest.get("source_sha256"),
         "source_type": latest.get("source_type"),
-        "final_md": str(final_md),
-        "final_assets_dir": latest_outputs.get("final_assets_dir"),
+        **final_artifact["manifest_fields"],
         "run_id": latest.get("run_id"),
         "plugin_version": latest.get("plugin_version"),
         "runtime_cache_key": latest.get("runtime_cache_key"),
     }
 
-    deleted = _delete_standard_artifacts(root, dry_run=dry_run)
+    deleted = _delete_standard_artifacts(root, dry_run=dry_run, protected_paths=final_artifact["protected_paths"])
     manifest_path = root / "kbprep_manifest.json"
     if not dry_run:
         manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -135,7 +127,7 @@ def _finalize_single(root: Path, *, confirm_review_needed: bool, dry_run: bool) 
     return {
         "action": "finalize",
         "output_root": str(root),
-        "final_md": str(final_md),
+        **final_artifact["return_fields"],
         "manifest": str(manifest_path),
         "deleted": deleted,
         "dry_run": dry_run,
@@ -151,26 +143,31 @@ def _finalize_batch(root: Path, *, confirm_review_needed: bool, dry_run: bool) -
     finalized: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
     review_needed: list[str] = []
+    protected_paths: list[Path] = []
     for entry in results:
         if not isinstance(entry, dict) or not entry.get("ok"):
             continue
-        final_md = entry.get("batch_final_md") or entry.get("latest_outputs", {}).get("final_md")
         output_root = Path(entry.get("output_root", ""))
-        if not final_md or not Path(final_md).exists():
-            missing.append({"file": entry.get("relative_path") or entry.get("file"), "final_md": final_md})
+        file_label = entry.get("relative_path") or entry.get("file")
+        try:
+            final_artifact = _final_artifact_from_batch_entry(entry)
+        except ValueError as exc:
+            missing.append({"file": file_label, "reason": str(exc)})
+            continue
+        protected_paths.extend(final_artifact["protected_paths"])
         review_path = output_root / "review_needed.md"
         if _has_review_content(review_path):
             review_needed.append(str(review_path))
         finalized.append({
-            "file": entry.get("relative_path") or entry.get("file"),
-            "final_md": final_md,
+            "file": file_label,
+            **final_artifact["manifest_fields"],
             "run_id": entry.get("run_id"),
         })
 
     if missing:
         fail(
             "KBPREP_FINAL_OUTPUT_MISSING",
-            "Some batch final Markdown files are missing. Cleanup stopped.",
+            "Some batch final deliverables are missing. Cleanup stopped.",
             details={"missing": missing[:20], "missing_count": len(missing)},
         )
     if review_needed and not confirm_review_needed:
@@ -187,7 +184,7 @@ def _finalize_batch(root: Path, *, confirm_review_needed: bool, dry_run: bool) -
         "total_finalized": len(finalized),
         "finalized": finalized,
     }
-    deleted = _delete_standard_artifacts(root, dry_run=dry_run)
+    deleted = _delete_standard_artifacts(root, dry_run=dry_run, protected_paths=protected_paths)
     manifest_path = root / "kbprep_batch_manifest.json"
     if not dry_run:
         manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -200,6 +197,79 @@ def _finalize_batch(root: Path, *, confirm_review_needed: bool, dry_run: bool) -
         "deleted": deleted,
         "dry_run": dry_run,
     }
+
+
+def _final_artifact_from_batch_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    latest_outputs = entry.get("latest_outputs", {})
+    if not isinstance(latest_outputs, dict):
+        latest_outputs = {}
+    merged_outputs = dict(latest_outputs)
+    if entry.get("batch_final_md"):
+        merged_outputs["final_md"] = entry.get("batch_final_md")
+        merged_outputs.setdefault("final_artifact_type", "markdown")
+    if entry.get("batch_obsidian_dir"):
+        merged_outputs["obsidian_dir"] = entry.get("batch_obsidian_dir")
+        merged_outputs.setdefault("final_artifact_type", "obsidian_dir")
+    if entry.get("batch_obsidian_index"):
+        merged_outputs["obsidian_index"] = entry.get("batch_obsidian_index")
+        merged_outputs.setdefault("final_artifact_type", "obsidian_dir")
+    try:
+        return _final_artifact_from_outputs(merged_outputs, file_label=entry.get("relative_path") or entry.get("file"))
+    except SystemExit:
+        raise
+    except Exception as exc:
+        raise ValueError(str(exc)) from exc
+
+
+def _final_artifact_from_outputs(latest_outputs: dict[str, Any], *, file_label: str | None = None) -> dict[str, Any]:
+    artifact_type = latest_outputs.get("final_artifact_type")
+    if artifact_type not in {"markdown", "obsidian_dir"}:
+        if latest_outputs.get("final_md"):
+            artifact_type = "markdown"
+        elif latest_outputs.get("obsidian_dir") or latest_outputs.get("obsidian_index"):
+            artifact_type = "obsidian_dir"
+
+    if artifact_type == "markdown":
+        final_md_raw = latest_outputs.get("final_md")
+        if not final_md_raw:
+            raise ValueError("latest outputs do not record final_md")
+        final_md = Path(final_md_raw)
+        if not final_md.exists():
+            raise ValueError(f"final Markdown is missing: {final_md}")
+        manifest_fields = {
+            "final_artifact_type": "markdown",
+            "final_md": str(final_md),
+            "final_assets_dir": latest_outputs.get("final_assets_dir"),
+        }
+        return {
+            "manifest_fields": manifest_fields,
+            "return_fields": manifest_fields,
+            "protected_paths": [final_md],
+        }
+
+    if artifact_type == "obsidian_dir":
+        obsidian_dir_raw = latest_outputs.get("obsidian_dir")
+        obsidian_index_raw = latest_outputs.get("obsidian_index")
+        if not obsidian_dir_raw or not obsidian_index_raw:
+            raise ValueError("latest outputs do not record obsidian_dir and obsidian_index")
+        obsidian_dir = Path(obsidian_dir_raw)
+        obsidian_index = Path(obsidian_index_raw)
+        if not obsidian_dir.exists() or not obsidian_dir.is_dir():
+            raise ValueError(f"Obsidian final directory is missing: {obsidian_dir}")
+        if not obsidian_index.exists() or not obsidian_index.is_file():
+            raise ValueError(f"Obsidian index is missing: {obsidian_index}")
+        manifest_fields = {
+            "final_artifact_type": "obsidian_dir",
+            "obsidian_dir": str(obsidian_dir),
+            "obsidian_index": str(obsidian_index),
+        }
+        return {
+            "manifest_fields": manifest_fields,
+            "return_fields": manifest_fields,
+            "protected_paths": [obsidian_dir],
+        }
+
+    raise ValueError(f"latest outputs do not record a supported final deliverable for {file_label or '<unknown>'}")
 
 
 def _cleanup_expired(root: Path, *, older_than_days: float, dry_run: bool) -> dict:
@@ -239,21 +309,34 @@ def _cleanup_all(root: Path, *, dry_run: bool) -> dict:
     }
 
 
-def _delete_standard_artifacts(root: Path, *, dry_run: bool) -> list[str]:
+def _delete_standard_artifacts(root: Path, *, dry_run: bool, protected_paths: list[Path] | None = None) -> list[str]:
     deleted: list[str] = []
+    protected = {path.resolve() for path in protected_paths or []}
     for name in TOP_LEVEL_FILES:
-        _delete_path(root, root / name, deleted, dry_run=dry_run)
+        _delete_path(root, root / name, deleted, dry_run=dry_run, protected_paths=protected)
     for name in TOP_LEVEL_DIRS:
-        _delete_path(root, root / name, deleted, dry_run=dry_run)
+        _delete_path(root, root / name, deleted, dry_run=dry_run, protected_paths=protected)
     return deleted
 
 
-def _delete_path(root: Path, path: Path, deleted: list[str], *, dry_run: bool) -> None:
+def _delete_path(root: Path, path: Path, deleted: list[str], *, dry_run: bool, protected_paths: set[Path] | None = None) -> None:
     if not path.exists():
         return
+    protected_paths = protected_paths or set()
     resolved = path.resolve()
     if resolved != root and root not in resolved.parents:
         raise RuntimeError(f"Refusing to delete outside output_root: {resolved}")
+    if resolved in protected_paths:
+        return
+    protected_descendants = [protected for protected in protected_paths if resolved in protected.parents]
+    if protected_descendants and path.is_dir():
+        for child in list(path.iterdir()):
+            _delete_path(root, child, deleted, dry_run=dry_run, protected_paths=protected_paths)
+        if not any(path.iterdir()) and resolved != root:
+            deleted.append(str(resolved))
+            if not dry_run:
+                path.rmdir()
+        return
     deleted.append(str(resolved))
     if dry_run:
         return

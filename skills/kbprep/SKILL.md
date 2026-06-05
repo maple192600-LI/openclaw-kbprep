@@ -11,15 +11,25 @@ KBPrep does one job: turn a local raw source file into readable, clean Markdown 
 
 It does not build indexes, generate final wiki articles, summarize source material, or fetch remote platform content. For YouTube, Douyin, Xiaohongshu, and similar sources, v1 expects a local subtitle, transcript, saved page, or exported text file.
 
-## Tool Order
+## Operator Workflow
 
 1. Run `kbprep_preflight` once for the workspace or output root.
 2. Run `kbprep_analyze` on the source file.
-3. Run `kbprep_prepare` on one file.
-4. Check `quality_report.json`, `audit.md`, `cleaned.md`, and `discarded.md`.
-5. Use the source-side final Markdown beside the source file as the daily result.
-6. Run `kbprep_cleanup(action="finalize")` after the user accepts the result.
-7. Use `kbprep_prepare_batch` only after one representative sample passes.
+3. Run `kbprep_prepare` on one representative file.
+4. Check `quality_report.json` and confirm there are no strict errors.
+5. Check `discarded.md` and `review_needed.md`; do not finalize while `review_needed.md` has unresolved content.
+6. Confirm the profile-specific final deliverable:
+   - `curated_obsidian_kb`: use `latest_outputs.obsidian_dir` and `latest_outputs.obsidian_index`; `latest_outputs.final_md` should be `null`.
+   - `standard`: use `latest_outputs.final_md`, the source-side Markdown beside the source file.
+7. Run `kbprep_cleanup(action="finalize")` only after the user accepts the result.
+8. Use `kbprep_prepare_batch` only after one representative sample passes the same checks.
+
+Do not accept fake closure:
+
+- Do not approve a run by reading only `cleaned.md`.
+- Do not ignore `quality_report.json` strict errors.
+- Do not run finalize while `review_needed.md` has content unless the user explicitly accepts it with `confirm_review_needed=true`.
+- Do not run batch before a representative sample passes.
 
 ## Tools
 
@@ -82,11 +92,11 @@ Forbidden changes:
 
 ### `kbprep_cleanup`
 
-Removes intermediate artifacts after the user accepts a result. It must never delete the source file, source-side final Markdown, or source-side assets.
+Removes intermediate artifacts after the user accepts a result. It must never delete the source file or the profile-specific final deliverable.
 
 Actions:
 
-- `finalize`: keep only the source-side final Markdown/assets plus a tiny manifest under `output_root`; delete process/audit files such as `runs/`, `original/`, `converted.md`, `blocks.jsonl`, `discarded.md`, `review_needed.md`, `quality_report.json`, `parts/`, `images/`, and batch work folders.
+- `finalize`: keep the final deliverable plus a tiny manifest under `output_root`; delete process/audit files such as `runs/`, `original/`, `converted.md`, `blocks.jsonl`, `discarded.md`, `review_needed.md`, `quality_report.json`, `parts/`, `images/`, and batch process files. In curated mode, keep `obsidian/`; in standard mode, keep the source-side Markdown/assets.
 - `expired`: remove old run history, defaulting to older than 7 days.
 - `all`: remove known intermediate artifacts without checking acceptance state.
 
@@ -96,11 +106,14 @@ If `review_needed.md` still has content, `finalize` should stop unless `confirm_
 
 Directory processing. It runs one sample first and stops if that sample fails quality gates. This prevents one bad rule or converter choice from damaging a whole batch.
 
-Each source file gets its own output directory under `<batch_output_root>/files/`, and each accepted source gets a source-side final Markdown file beside the original source. Do not read `<batch_output_root>/cleaned.md` after a batch; use `results.json`, each result's `batch_final_md`, or each result's `latest_outputs.final_md`.
+Each source file gets its own output directory under `<batch_output_root>/files/`. Do not read `<batch_output_root>/cleaned.md` after a batch. Use `results.json`:
+
+- Curated success entries have `final_artifact_type="obsidian_dir"`, `batch_obsidian_dir`, and `batch_obsidian_index`.
+- Standard success entries have `final_artifact_type="markdown"` and `batch_final_md`.
 
 ## Output
 
-Each successful run writes a source-side final Markdown file next to the source file. This is the file normal users keep. The top-level output files and `runs/<run_id>/` are audit/process material:
+Each successful run writes a profile-specific final deliverable. The top-level output files and `runs/<run_id>/` are audit/process material:
 
 ```text
 <output_root>/
@@ -136,7 +149,7 @@ Each successful run writes a source-side final Markdown file next to the source 
     review_pack.json
 ```
 
-After `kbprep_cleanup(action="finalize")`, the source-side final Markdown remains beside the source file and the output root keeps only a small manifest such as `kbprep_manifest.json` or `kbprep_batch_manifest.json`.
+For `profile="curated_obsidian_kb"`, the final deliverable is `obsidian/`, entered through `obsidian/00-索引.md`; `final_md` is intentionally `null`. For `profile="standard"`, the final deliverable is the source-side final Markdown. After `kbprep_cleanup(action="finalize")`, only the final deliverable and a small manifest such as `kbprep_manifest.json` or `kbprep_batch_manifest.json` should remain.
 
 For short files, `parts/` may be empty. For long files, parts are cut by headings and natural content boundaries, not by page number. `parts/parts_manifest.json` records `part_id`, `heading_path`, `block_ids`, and `char_count`; reading `part_001.md`, `part_002.md`, ... in manifest order should reconstruct `cleaned.md` after removing frontmatter. Top-level files are updated only after a run has no strict quality errors.
 
@@ -150,6 +163,7 @@ Batch output:
   files/
     <source-stem>_<hash>/
       cleaned.md
+      obsidian/
       discarded.md
       review_needed.md
       quality_report.json
@@ -170,4 +184,4 @@ If unsure, mark `review`; do not delete.
 
 ## Quality Rule
 
-`cleaned.md` alone is not proof. A run is valid only when `quality_report.json` has no strict errors and the discarded/review files make sense on inspection.
+`cleaned.md` alone is not proof. A run is valid only when `quality_report.json` has no strict errors, the discarded/review files make sense on inspection, and the profile-specific final deliverable exists.

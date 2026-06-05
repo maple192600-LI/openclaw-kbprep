@@ -1479,6 +1479,8 @@ describe("kbprep worker pipeline", () => {
 
       expect(envelope.data.outputs.obsidian_dir).toBe(obsidianDir);
       expect(envelope.data.latest_outputs.obsidian_dir).toBe(latestObsidianDir);
+      expect(envelope.data.latest_outputs.obsidian_index).toBe(path.join(latestObsidianDir, "00-索引.md"));
+      expect(envelope.data.latest_outputs.final_artifact_type).toBe("obsidian_dir");
       expect(envelope.data.latest_outputs.final_md).toBe(null);
       expect(existsSync(sourceFinalPath)).toBe(false);
       expect(existsSync(path.join(latestObsidianDir, "00-索引.md"))).toBe(true);
@@ -1597,10 +1599,69 @@ describe("kbprep worker pipeline", () => {
       expect(existsSync(path.join(outputRoot, "quality_report.json"))).toBe(false);
       const manifest = JSON.parse(readFileSync(path.join(outputRoot, "kbprep_manifest.json"), "utf8"));
       expect(manifest.status).toBe("finalized");
+      expect(manifest.final_artifact_type).toBe("markdown");
       expect(manifest.final_md).toBe(finalPath);
       expect(manifest.source_path).toBe(sourcePath);
       expect(cleanup.data.deleted.length).toBeGreaterThan(0);
       expect(prepared.data.latest_outputs.final_md).toBe(finalPath);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("finalizes default curated Obsidian runs without deleting the Obsidian deliverable", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-curated-finalize-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "curated.md");
+      writeFileSync(
+        sourcePath,
+        [
+          "# AI 方法案例",
+          "",
+          "第一步：保留 CURATED_FINALIZE_MARKER，并记录参数 threshold=0.8。",
+          "",
+          "第二步：把流程拆成输入、判断、输出三个可验证节点。",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const prepared = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+      const obsidianDir = prepared.data.latest_outputs.obsidian_dir;
+      const obsidianIndex = prepared.data.latest_outputs.obsidian_index;
+      expect(prepared.data.latest_outputs.final_md).toBe(null);
+      expect(prepared.data.latest_outputs.final_artifact_type).toBe("obsidian_dir");
+      expect(existsSync(obsidianIndex)).toBe(true);
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(true);
+      expect(existsSync(path.join(outputRoot, "quality_report.json"))).toBe(true);
+
+      const cleanup = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+      });
+
+      expect(cleanup.ok).toBe(true);
+      expect(existsSync(sourcePath)).toBe(true);
+      expect(existsSync(obsidianDir)).toBe(true);
+      expect(readFileSync(obsidianIndex, "utf8")).toContain("[[01-完整正文]]");
+      expect(readFileSync(path.join(obsidianDir, "01-完整正文.md"), "utf8")).toContain("CURATED_FINALIZE_MARKER");
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "converted.md"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "quality_report.json"))).toBe(false);
+      const manifest = JSON.parse(readFileSync(path.join(outputRoot, "kbprep_manifest.json"), "utf8"));
+      expect(manifest.final_artifact_type).toBe("obsidian_dir");
+      expect(manifest.obsidian_dir).toBe(obsidianDir);
+      expect(manifest.obsidian_index).toBe(obsidianIndex);
+      expect(cleanup.data.final_artifact_type).toBe("obsidian_dir");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -1644,6 +1705,53 @@ describe("kbprep worker pipeline", () => {
       expect(confirmed.ok).toBe(true);
       expect(existsSync(path.join(outputRoot, "runs"))).toBe(false);
       expect(existsSync(path.join(inputDir, "guide.md"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses curated finalize when review-needed content exists unless the user confirms cleanup", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-curated-finalize-review-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "curated-review.md");
+      writeFileSync(
+        sourcePath,
+        ["# Curated Review", "", "第一步：保留 CURATED_REVIEW_GUARD_MARKER，并设置 threshold=0.8。"].join("\n"),
+        "utf8",
+      );
+
+      const prepared = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+      writeFileSync(path.join(outputRoot, "review_needed.md"), "needs curated human review", "utf8");
+
+      const blocked = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+      }, 1);
+
+      expect(blocked.ok).toBe(false);
+      expect(blocked.error.code).toBe("KBPREP_REVIEW_NEEDED");
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(true);
+      expect(existsSync(prepared.data.latest_outputs.obsidian_index)).toBe(true);
+
+      const confirmed = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+        confirm_review_needed: true,
+      });
+
+      expect(confirmed.ok).toBe(true);
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(false);
+      expect(existsSync(prepared.data.latest_outputs.obsidian_index)).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -3078,6 +3186,91 @@ describe("kbprep worker pipeline", () => {
       expect(readFileSync(path.join(inputDir, "beta.cleaned.md"), "utf8")).toContain("BETA_UNIQUE_MARKER");
       expect(existsSync(path.join(outputRoot, "progress.json"))).toBe(true);
       expect(existsSync(path.join(outputRoot, "failures.json"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it("records and finalizes curated Obsidian batch deliverables", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-curated-batch-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      writeFileSync(
+        path.join(inputDir, "alpha.md"),
+        [
+          "# Alpha 方法",
+          "",
+          "第一步：保留 ALPHA_CURATED_MARKER，并设置 threshold=0.8。",
+          "",
+          "第二步：把操作流程写成可复盘 SOP。",
+        ].join("\n"),
+        "utf8",
+      );
+      writeFileSync(
+        path.join(inputDir, "beta.md"),
+        [
+          "# Beta 案例",
+          "",
+          "第一步：保留 BETA_CURATED_MARKER，并记录 retry_count=3。",
+          "",
+          "第二步：保留案例里的判断标准和失败原因。",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare_batch", {
+        input_dir: inputDir,
+        output_root: outputRoot,
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+        convert_jobs: 1,
+      });
+
+      const results = envelope.data.results as Array<{
+        file: string;
+        final_artifact_type: string;
+        batch_final_md?: string;
+        batch_obsidian_dir?: string;
+        batch_obsidian_index?: string;
+        latest_outputs: {
+          final_md: string | null;
+          final_artifact_type: string;
+          obsidian_dir: string;
+          obsidian_index: string;
+        };
+      }>;
+
+      expect(envelope.data.failed).toBe(0);
+      expect(results).toHaveLength(2);
+      for (const result of results) {
+        expect(result.final_artifact_type).toBe("obsidian_dir");
+        expect(result.latest_outputs.final_artifact_type).toBe("obsidian_dir");
+        expect(result.latest_outputs.final_md).toBe(null);
+        expect(result.batch_final_md).toBeUndefined();
+        expect(result.batch_obsidian_dir).toBe(result.latest_outputs.obsidian_dir);
+        expect(result.batch_obsidian_index).toBe(result.latest_outputs.obsidian_index);
+        expect(existsSync(result.batch_obsidian_index!)).toBe(true);
+      }
+
+      const cleanup = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+      });
+
+      expect(cleanup.ok).toBe(true);
+      const manifest = JSON.parse(readFileSync(path.join(outputRoot, "kbprep_batch_manifest.json"), "utf8"));
+      expect(manifest.total_finalized).toBe(2);
+      for (const entry of manifest.finalized) {
+        expect(entry.final_artifact_type).toBe("obsidian_dir");
+        expect(existsSync(entry.obsidian_dir)).toBe(true);
+        expect(existsSync(entry.obsidian_index)).toBe(true);
+      }
+      expect(existsSync(path.join(outputRoot, "results.json"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "progress.json"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

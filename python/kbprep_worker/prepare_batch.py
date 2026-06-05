@@ -107,12 +107,30 @@ def _output_root_for_file(batch_output_root: Path, file_path: Path) -> Path:
     return batch_output_root / "files" / _safe_output_dir_name(file_path)
 
 
-def _source_final_from_result(data: dict) -> str | None:
+def _batch_final_fields_from_result(data: dict) -> dict:
     latest_outputs = data.get("latest_outputs", {})
+    if not isinstance(latest_outputs, dict):
+        return {}
+    artifact_type = latest_outputs.get("final_artifact_type")
     final_md = latest_outputs.get("final_md")
-    if final_md and Path(final_md).exists():
-        return final_md
-    return None
+    if artifact_type == "markdown" or final_md:
+        if final_md and Path(final_md).exists():
+            return {
+                "final_artifact_type": "markdown",
+                "batch_final_md": final_md,
+            }
+        return {}
+
+    obsidian_dir = latest_outputs.get("obsidian_dir")
+    obsidian_index = latest_outputs.get("obsidian_index")
+    if artifact_type == "obsidian_dir" or obsidian_dir or obsidian_index:
+        if obsidian_dir and obsidian_index and Path(obsidian_dir).is_dir() and Path(obsidian_index).is_file():
+            return {
+                "final_artifact_type": "obsidian_dir",
+                "batch_obsidian_dir": obsidian_dir,
+                "batch_obsidian_index": obsidian_index,
+            }
+    return {}
 
 
 def _write_progress(output_root: Path, payload: dict) -> None:
@@ -257,9 +275,7 @@ def run(data: dict) -> None:
         "ok": sample_result.get("ok", False),
     }
     if sample_result.get("ok") and not sample_data.get("strict_errors"):
-        batch_final = _source_final_from_result(sample_data)
-        if batch_final:
-            sample_entry["batch_final_md"] = batch_final
+        sample_entry.update(_batch_final_fields_from_result(sample_data))
     results.append(sample_entry)
     if not sample_result.get("ok") or sample_result.get("data", {}).get("strict_errors"):
         failures.append({
@@ -307,9 +323,7 @@ def run(data: dict) -> None:
                 **out_data,
                 "ok": True,
             }
-            batch_final = _source_final_from_result(out_data)
-            if batch_final:
-                entry["batch_final_md"] = batch_final
+            entry.update(_batch_final_fields_from_result(out_data))
             results.append(entry)
         else:
             failed += 1

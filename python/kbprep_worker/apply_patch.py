@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from .envelope import ok, fail
+from .prepare_artifacts import publish_latest_outputs as _shared_publish_latest_outputs
 from .quality import _detail_categories, _is_known_pollution_without_detail
 
 logger = logging.getLogger(__name__)
@@ -264,16 +265,20 @@ def _source_title_from_previous_quality(previous_quality: dict, run_p: Path) -> 
 
 
 def _run_output_paths(run_p: Path) -> dict:
+    has_obsidian = (run_p / "obsidian").exists()
     return {
         "diagnosis_report": str(run_p / "diagnosis_report.json"),
         "blocks_jsonl": str(run_p / "blocks.jsonl"),
         "cleaned_md": str(run_p / "cleaned.md"),
+        "final_artifact_type": "obsidian_dir" if has_obsidian else "markdown",
+        "final_md": None,
+        "final_assets_dir": None,
         "discarded_md": str(run_p / "discarded.md"),
         "review_needed_md": str(run_p / "review_needed.md"),
         "quality_report": str(run_p / "quality_report.json"),
         "parts_dir": str(run_p / "parts"),
         "images_dir": str(run_p / "images"),
-        "obsidian_dir": str(run_p / "obsidian") if (run_p / "obsidian").exists() else None,
+        "obsidian_dir": str(run_p / "obsidian") if has_obsidian else None,
         "obsidian_index": str(run_p / "obsidian" / "00-索引.md") if (run_p / "obsidian" / "00-索引.md").exists() else None,
     }
 
@@ -281,6 +286,8 @@ def _run_output_paths(run_p: Path) -> dict:
 def _publish_latest_outputs(run_p: Path, output_root: Path, profile: str = "standard") -> dict:
     output_root.mkdir(parents=True, exist_ok=True)
     input_path = _input_path_from_latest(output_root)
+    if input_path:
+        return _shared_publish_latest_outputs(run_p, output_root, input_path, profile)
     for name in [
         "converted.md",
         "diagnosis_report.json",
@@ -338,6 +345,7 @@ def _publish_latest_outputs(run_p: Path, output_root: Path, profile: str = "stan
         "diagnosis_report": str(output_root / "diagnosis_report.json"),
         "blocks_jsonl": str(output_root / "blocks.jsonl"),
         "cleaned_md": str(output_root / "cleaned.md"),
+        "final_artifact_type": "markdown" if source_side_final else "obsidian_dir",
         "final_md": str(final_md) if final_md else None,
         "final_assets_dir": str(final_assets_dir) if final_assets_dir else None,
         "discarded_md": str(output_root / "discarded.md"),
