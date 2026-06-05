@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const RUNTIME_MARKER_SCHEMA = "kbprep.local_venv.v1";
-const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]==3.2.1;PyMuPDF==1.27.2.3;beautifulsoup4==4.14.3;lxml==6.0.2";
+const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]>=3.2.1,<4;PyMuPDF>=1.27,<2;beautifulsoup4==4.14.3;lxml==6.0.2";
 export function resolvePythonPath(_startPath, config) {
     const runtimePython = pluginVenvPythonPath();
     if (isPluginVenvReady(config))
@@ -30,18 +30,20 @@ export async function ensurePythonRuntime(config) {
     await runSetupCommand(bootstrap.command, [...bootstrap.args, "-m", "venv", venvDir], "create KBPrep local Python virtual environment", 5 * 60_000);
     await runSetupCommand(pythonPath, ["-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], "upgrade pip in KBPrep local Python virtual environment", 10 * 60_000);
     await runSetupCommand(pythonPath, ["-m", "pip", "install", "-e", pluginPythonProjectDir()], "install kbprep worker dependencies into KBPrep local Python virtual environment", 60 * 60_000);
-    const setupResult = await runSetupCommand(pythonPath, ["-m", "kbprep_worker.cli", "setup-env", "--json-stdin"], "detect hardware and tune KBPrep local Python dependencies", 30 * 60_000, JSON.stringify({ device_override: config?.device_override ?? "auto" }));
+    const setupResult = await runSetupCommand(pythonPath, ["-m", "kbprep_worker.cli", "setup-env", "--json-stdin"], "detect hardware and tune KBPrep local Python dependencies", 30 * 60_000, JSON.stringify({ device_override: config?.device_override }));
+    const setupEnvelope = parseSetupEnvelope(setupResult.stdout);
     writeFileSync(pluginVenvReadyMarker(), JSON.stringify({
         schema: RUNTIME_MARKER_SCHEMA,
         created_at: new Date().toISOString(),
         plugin_version: pluginPackageVersion(),
         python_executable: pythonPath,
-        device_override: effectiveDeviceOverride(config),
+        requested_device_override: config?.device_override ?? null,
+        actual_device: actualDeviceFromSetupEnvelope(setupEnvelope),
         python_project: {
             path: pluginPythonProjectDir(),
             dependency_spec: PYTHON_WORKER_DEPENDENCY_SPEC,
         },
-        setup_env: parseSetupEnvelope(setupResult.stdout),
+        setup_env: setupEnvelope,
     }, null, 2), "utf-8");
     return pythonPath;
 }
@@ -107,7 +109,7 @@ export function isRuntimeMarkerCurrent(marker, config) {
     return (data.schema === RUNTIME_MARKER_SCHEMA
         && data.plugin_version === pluginPackageVersion()
         && data.python_executable === pluginVenvPythonPath()
-        && data.device_override === effectiveDeviceOverride(config)
+        && requestedDeviceOverride(data) === (config?.device_override ?? null)
         && pythonProject?.dependency_spec === PYTHON_WORKER_DEPENDENCY_SPEC
         && setupEnv?.ok === true
         && !hasCudaSetupFailure(setupData));
@@ -118,8 +120,13 @@ function hasCudaSetupFailure(setupData) {
         return false;
     return actions.some((action) => typeof action === "string" && action.startsWith("cuda_install_failed"));
 }
-function effectiveDeviceOverride(config) {
-    return config?.device_override ?? "auto";
+function requestedDeviceOverride(marker) {
+    if ("requested_device_override" in marker) {
+        return marker.requested_device_override === "cuda" || marker.requested_device_override === "cpu"
+            ? marker.requested_device_override
+            : null;
+    }
+    return marker.device_override === "cuda" || marker.device_override === "cpu" ? marker.device_override : null;
 }
 function pluginPackageVersion() {
     try {
@@ -194,4 +201,13 @@ function parseSetupEnvelope(stdout) {
     catch {
         return { raw_stdout_preview: trimmed.slice(0, 500) };
     }
+}
+function actualDeviceFromSetupEnvelope(envelope) {
+    if (!envelope || typeof envelope !== "object")
+        return null;
+    const data = envelope.data;
+    if (!data || typeof data !== "object")
+        return null;
+    const device = data.device;
+    return typeof device === "string" ? device : null;
 }

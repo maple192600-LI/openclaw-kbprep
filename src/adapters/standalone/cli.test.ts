@@ -10,6 +10,16 @@ describe("standalone KBPrep CLI adapter", () => {
     expect(result.exitCode).toBe(0);
     expect(result.output).toContain("Usage: kbprep-prepare");
     expect(result.output).toContain("--input <file>");
+    expect(result.output).toContain("curated_obsidian_kb");
+  });
+
+  it("describes cleanup as preserving the profile-specific final deliverable", async () => {
+    const result = await runStandaloneCli("cleanup", ["--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("Usage: kbprep-cleanup");
+    expect(result.output).toContain("profile-specific final deliverable");
+    expect(result.output).not.toContain("source-side final outputs");
   });
 
   it("prints help for every standalone command without touching Python setup", async () => {

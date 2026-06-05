@@ -254,6 +254,7 @@ def run_quality_check(
     report = {
         "source_sha256": diagnosis.get("file_id", ""),
         "source_type": source_type,
+        "language_detected": _detect_language_from_blocks(blocks),
         "total_blocks": total_blocks,
         "keep_blocks": keep_count,
         "discard_blocks": discard_count,
@@ -315,6 +316,22 @@ def _read_json_file(path: Path) -> dict:
         return {}
 
 
+def _detect_language_from_blocks(blocks: list[dict]) -> str:
+    text = "\n".join(str(block.get("text", "")) for block in blocks)
+    if not text.strip():
+        return "other"
+    letters = sum(1 for char in text if char.isalpha())
+    cjk = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
+    if letters == 0:
+        return "other"
+    ratio = cjk / letters
+    if ratio >= 0.2:
+        return "zh"
+    if ratio <= 0.05:
+        return "en"
+    return "mixed"
+
+
 def _source_text_layer_status(diagnosis: dict, conversion_report: dict) -> dict:
     text_quality = diagnosis.get("text_quality", {})
     converter = str(conversion_report.get("converter") or "")
@@ -363,29 +380,32 @@ def _allows_cta_keyword_context(block: dict) -> bool:
     return any(term in text for term in ["平台规则", "违规案例", "不要", "判断标准", "限制条件"])
 
 
+DISCARDED_BODY_LOSS_EXEMPT_TYPES = {
+    "transcript_filler",
+    "marketing_cta",
+    "marketing_wrapper",
+    "author_identity",
+    "author_intro",
+    "image_artifact",
+    "layout_table_artifact",
+    "layout_separator",
+    "author_profile_links",
+    "toc",
+    "toc_heading",
+    "empty_heading",
+    "back_matter",
+    "refund_policy",
+    "footer",
+    "qr_image",
+    "empty",
+}
+
+
 def _counts_for_text_coverage(block: dict) -> bool:
     """Coverage gates measure body text retention, not image-link bookkeeping."""
     block_type = block.get("type")
     text = block.get("text", "").strip()
-    if block.get("status") == "discard" and block_type in {
-        "transcript_filler",
-        "marketing_cta",
-        "marketing_wrapper",
-        "author_identity",
-        "author_intro",
-        "image_artifact",
-        "layout_table_artifact",
-        "layout_separator",
-        "author_profile_links",
-        "toc",
-        "toc_heading",
-        "empty_heading",
-        "back_matter",
-        "refund_policy",
-        "footer",
-        "qr_image",
-        "empty",
-    }:
+    if block.get("status") == "discard" and block_type in DISCARDED_BODY_LOSS_EXEMPT_TYPES:
         return False
     if block_type in {"image_evidence", "image_operation", "diagram"}:
         return not _is_markdown_image_only(text)
@@ -395,25 +415,7 @@ def _counts_for_text_coverage(block: dict) -> bool:
 def _counts_for_discard_ratio(block: dict) -> bool:
     """Discard ratio gates body loss, not successful removal of known pollution."""
     block_type = block.get("type")
-    if block.get("status") == "discard" and block_type in {
-        "transcript_filler",
-        "marketing_cta",
-        "marketing_wrapper",
-        "author_identity",
-        "author_intro",
-        "image_artifact",
-        "layout_table_artifact",
-        "layout_separator",
-        "author_profile_links",
-        "toc",
-        "toc_heading",
-        "empty_heading",
-        "back_matter",
-        "refund_policy",
-        "footer",
-        "qr_image",
-        "empty",
-    }:
+    if block.get("status") == "discard" and block_type in DISCARDED_BODY_LOSS_EXEMPT_TYPES:
         return False
     return _counts_for_text_coverage(block)
 

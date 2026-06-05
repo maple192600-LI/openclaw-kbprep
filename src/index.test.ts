@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import entry, { isRuntimeMarkerCurrent, kbprepVenvPythonPath, pluginVenvPythonPath, resolvePythonPath } from "./index.js";
 import { getToolPluginMetadata } from "openclaw/plugin-sdk/tool-plugin";
 
@@ -10,6 +10,21 @@ type RegisteredTool = {
   name: string;
   execute: (...args: unknown[]) => Promise<unknown>;
 };
+
+const tempRoots: string[] = [];
+
+async function makeTempRoot(prefix: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), prefix));
+  tempRoots.push(root);
+  return root;
+}
+
+afterEach(async () => {
+  while (tempRoots.length) {
+    const root = tempRoots.pop()!;
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 describe("openclaw-kbprep", () => {
   it("declares tool metadata", () => {
@@ -55,9 +70,10 @@ describe("openclaw-kbprep", () => {
       schema: "kbprep.local_venv.v1",
       plugin_version: packageVersion,
       python_executable: pluginVenvPythonPath(),
-      device_override: "auto",
+      requested_device_override: null,
+      actual_device: "cpu",
       python_project: {
-        dependency_spec: "mineru[all]==3.2.1;PyMuPDF==1.27.2.3;beautifulsoup4==4.14.3;lxml==6.0.2",
+        dependency_spec: "mineru[all]>=3.2.1,<4;PyMuPDF>=1.27,<2;beautifulsoup4==4.14.3;lxml==6.0.2",
       },
       setup_env: { ok: true, data: { device: "cpu" } },
     };
@@ -74,7 +90,7 @@ describe("openclaw-kbprep", () => {
   });
 
   it("runs preflight through the OpenClaw tool registration path", async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), "kbprep-preflight-"));
+    const tempRoot = await makeTempRoot("kbprep-preflight-");
     const tools = registerTools();
     const preflight = tools.find((tool) => tool.name === "kbprep_preflight");
     expect(preflight).toBeDefined();
@@ -109,7 +125,7 @@ describe("openclaw-kbprep", () => {
   });
 
   it("runs prepare through the OpenClaw tool registration path", async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), "kbprep-plugin-"));
+    const tempRoot = await makeTempRoot("kbprep-plugin-");
     const inputPath = join(tempRoot, "raw.md");
     const outputRoot = join(tempRoot, "out");
     await writeFile(
@@ -171,7 +187,7 @@ describe("openclaw-kbprep", () => {
   }, 30_000);
 
   it("keeps prepare output metadata after AI review publishes the cleaned files", async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), "kbprep-plugin-ai-"));
+    const tempRoot = await makeTempRoot("kbprep-plugin-ai-");
     const inputPath = join(tempRoot, "raw.md");
     const outputRoot = join(tempRoot, "out");
     await writeFile(
@@ -227,7 +243,7 @@ describe("openclaw-kbprep", () => {
   }, 30_000);
 
   it("validates AI review patches and retries unsafe-only batches", async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), "kbprep-plugin-ai-guard-"));
+    const tempRoot = await makeTempRoot("kbprep-plugin-ai-guard-");
     const inputPath = join(tempRoot, "raw.md");
     const outputRoot = join(tempRoot, "out");
     await writeFile(
@@ -254,9 +270,14 @@ describe("openclaw-kbprep", () => {
           getSessionMessages: async () => ({
             messages: [
               {
-                content: JSON.stringify(runCalls === 1
-                  ? [{ op: "replace", path: "/blocks/b_000000/text", value: "summary" }]
-                  : [{ op: "replace", path: "/blocks/b_000000/reason", value: "safe classification metadata only" }]),
+                content: runCalls === 1
+                  ? JSON.stringify([{ op: "replace", path: "/blocks/b_000000/text", value: "summary" }])
+                  : [
+                      "Replace step [1] only as metadata.",
+                      "```json",
+                      JSON.stringify([{ op: "replace", path: "/blocks/b_000000/reason", value: "safe classification metadata only" }]),
+                      "```",
+                    ].join("\n"),
               },
             ],
           }),
@@ -291,8 +312,61 @@ describe("openclaw-kbprep", () => {
     expect(cleaned).not.toContain("summary");
   }, 30_000);
 
+  it("runs AI review through a generic backend without OpenClaw subagent calls", async () => {
+    const tempRoot = await makeTempRoot("kbprep-plugin-ai-backend-");
+    const inputPath = join(tempRoot, "raw.md");
+    const outputRoot = join(tempRoot, "out");
+    await writeFile(
+      inputPath,
+      [
+        "# Tutorial",
+        "",
+        "1. Open the dashboard and set threshold=0.8.",
+        "",
+        "This is useful context that should not be rewritten.",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    let backendCalls = 0;
+    const tools = registerTools({
+      runtime: {
+        aiReviewBackend: {
+          review: async () => {
+            backendCalls += 1;
+            return {
+              messages: [{
+                content: JSON.stringify([{ op: "replace", path: "/blocks/b_000000/reason", value: "reviewed by generic backend" }]),
+              }],
+            };
+          },
+        },
+      },
+    });
+    const prepare = tools.find((tool) => tool.name === "kbprep_prepare");
+    expect(prepare).toBeDefined();
+
+    const result = await prepare!.execute(
+      "test-call-ai-backend",
+      {
+        input_path: inputPath,
+        output_root: outputRoot,
+        mode: "ai_review",
+        force: true,
+        language: "zh",
+      },
+      undefined,
+      undefined,
+    );
+
+    const payload = unwrapJsonResult(result);
+    expect(payload.ok).toBe(true);
+    expect(backendCalls).toBe(1);
+    expect(payload.data.ai_review.applied).toBe(1);
+  }, 30_000);
+
   it("reviews oversized long-document review packs in batches instead of skipping AI review", async () => {
-    const tempRoot = await mkdtemp(join(tmpdir(), "kbprep-plugin-ai-long-"));
+    const tempRoot = await makeTempRoot("kbprep-plugin-ai-long-");
     const inputPath = join(tempRoot, "long.md");
     const outputRoot = join(tempRoot, "out");
     const protectedDetail = "Keep tool_name=OpenClaw, threshold=0.8, retry_count=3, failure_reason=timeout, and classification_instruction='classify only'.";

@@ -9,6 +9,37 @@ import { mkdir, appendFile } from "node:fs/promises";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeError } from "./errors.js";
+async function writeStdin(stream, input) {
+    await new Promise((resolve, reject) => {
+        const cleanup = () => {
+            stream.off("error", onError);
+            stream.off("drain", onDrain);
+        };
+        const finish = () => {
+            cleanup();
+            stream.end(() => resolve());
+        };
+        const onError = (err) => {
+            cleanup();
+            reject(err);
+        };
+        const onDrain = () => {
+            finish();
+        };
+        stream.once("error", onError);
+        try {
+            if (stream.write(input)) {
+                finish();
+                return;
+            }
+        }
+        catch (err) {
+            onError(err instanceof Error ? err : new Error(String(err)));
+            return;
+        }
+        stream.once("drain", onDrain);
+    });
+}
 /**
  * Call Python worker via CLI mode.
  * stdout: single JSON envelope
@@ -33,7 +64,7 @@ export async function callWorker(command, input, options) {
     env.PYTHONUTF8 = "1";
     env.PYTHONIOENCODING = "utf-8";
     // Pass worker runtime config as environment variables.
-    if (options.config?.device_override && options.config.device_override !== "auto") {
+    if (options.config?.device_override) {
         env.MINERU_DEVICE_MODE = options.config.device_override;
     }
     if (options.config?.max_cpu_threads) {
@@ -97,10 +128,9 @@ export async function callWorker(command, input, options) {
             reject(err);
         });
     });
-    const inputJson = JSON.stringify(input);
-    child.stdin.write(inputJson);
-    child.stdin.end();
     try {
+        const inputJson = JSON.stringify(input);
+        await writeStdin(child.stdin, inputJson);
         const { code } = await exitPromise;
         const envelope = parseEnvelope(stdout, stderrLines.slice(-120));
         if (!envelope.ok && !envelope.error) {
@@ -118,7 +148,7 @@ export async function callWorker(command, input, options) {
         if (isAbortError(err)) {
             return {
                 ok: false,
-                error: makeError("KBPREP_CANCELLED", "Worker call was cancelled.", {
+                error: makeError("E_CANCELLED", "Worker call was cancelled.", {
                     recoverable: true,
                     suggested_action: "Retry if needed.",
                 }),
@@ -136,7 +166,7 @@ export async function callWorker(command, input, options) {
         }
         return {
             ok: false,
-            error: makeError("KBPREP_INTERNAL", String(err), {
+            error: makeError("E_INTERNAL", String(err), {
                 details: { stderr_tail: stderrLines.slice(-10) },
             }),
         };
@@ -147,7 +177,7 @@ function parseEnvelope(raw, stderrTail) {
     if (!trimmed) {
         return {
             ok: false,
-            error: makeError("KBPREP_WORKER_BAD_JSON", "Worker returned empty stdout.", {
+            error: makeError("E_WORKER_BAD_JSON", "Worker returned empty stdout.", {
                 details: { stderr_tail: stderrTail },
             }),
         };
@@ -158,7 +188,7 @@ function parseEnvelope(raw, stderrTail) {
     catch (err) {
         return {
             ok: false,
-            error: makeError("KBPREP_WORKER_BAD_JSON", `Failed to parse worker stdout: ${err}`, {
+            error: makeError("E_WORKER_BAD_JSON", `Failed to parse worker stdout: ${err}`, {
                 details: { stdout_preview: trimmed.slice(0, 500), stderr_tail: stderrTail },
             }),
         };

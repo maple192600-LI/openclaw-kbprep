@@ -6,7 +6,7 @@ KBPrep focuses on preparation only: detect file type, convert as losslessly as p
 
 It does not build a RAG index or download from remote platforms. By default it uses `profile="curated_obsidian_kb"` and renders an Obsidian-ready wiki folder from the cleaned blocks. Use `profile="standard"` only when you explicitly want a broad cleaned Markdown file instead of knowledge-base curation.
 
-OpenClaw is one supported host adapter, not the project boundary. Non-OpenClaw users can call the same worker through the standalone CLI or the Python worker module.
+OpenClaw is one supported host adapter, not the project boundary. The npm package name is `kbprep`; `openclaw-kbprep` is only the OpenClaw adapter/plugin id and the current GitHub repository slug. Non-OpenClaw users can call the same worker through the standalone CLI or the Python worker module.
 
 ![KB Prep Tool showcase](docs/showcase-preview.png)
 
@@ -38,18 +38,24 @@ kbprep-prepare --input ./source.pdf --output ./.kbprep/source
 kbprep-cleanup --output ./.kbprep/source --action finalize
 ```
 
+Full CLI usage is in [`docs/standalone-cli.md`](docs/standalone-cli.md).
+
 Expected output:
 
 - `original/`: original file backup
 - `converted.md`: converted Markdown before cleaning
 - `blocks.jsonl`: content blocks in original order
-- `cleaned.md`: final readable Markdown
-- source-side final Markdown: a direct-use `.md` file next to the source file, named from the source file stem
-- `obsidian/`: text-first Obsidian wiki folder with full text, topic notes, and audit files
+- `cleaned.md`: cleaned process output for audit and fallback reading
+- `obsidian/`: default curated final deliverable with full text, topic notes, and audit files
 - `discarded.md`: removed pollution with reasons
 - `review_needed.md`: uncertain content for manual review
 - `images/`: copied local or embedded image assets referenced by the Markdown output
 - `quality_report.json`: retention and quality checks
+
+Final deliverables are profile-specific:
+
+- `profile="curated_obsidian_kb"`: keep `latest_outputs.obsidian_dir` and start from `latest_outputs.obsidian_index`. `latest_outputs.final_md` is intentionally `null` and `latest_outputs.final_artifact_type` is `"obsidian_dir"`.
+- `profile="standard"` and older broad-cleaning profiles: keep `latest_outputs.final_md`, a source-side Markdown file named from the source stem. `latest_outputs.final_artifact_type` is `"markdown"`.
 
 The default profile adds a second knowledge-base curation layer after ordinary cleaning. It removes author names in headings, author bios, identity wrappers, self-introductions, image-only artifacts, and obvious non-knowledge packaging while keeping method/case body text verbatim. It also writes an Obsidian-ready folder:
 
@@ -69,7 +75,7 @@ kbprep_prepare(input_path, output_root, profile="curated_obsidian_kb")
 
 The profile does not summarize or rewrite source body paragraphs. It may sanitize generated note titles and heading display text by removing author/name prefixes, but source knowledge paragraphs are either kept, removed into audit files, or marked for review.
 
-For daily use, the source-side final Markdown is the file to move into or keep in your knowledge base. For example, `OpenClaw橙皮书.pdf` publishes `OpenClaw橙皮书.md` beside the source file. If the source itself is already Markdown, KBPrep publishes `name.cleaned.md` instead of overwriting the original note. Image assets for that final file are copied beside the source as `name.assets/`.
+For default curated use, the Obsidian folder is the result to move into or keep in your knowledge base. For example, `kbprep_prepare(..., profile="curated_obsidian_kb")` publishes `output_root/obsidian/00-索引.md` as the entry point and keeps `cleaned.md` as process material. If you explicitly choose `profile="standard"`, KBPrep publishes source-side Markdown instead: `OpenClaw橙皮书.pdf` becomes `OpenClaw橙皮书.md`, and an existing Markdown source becomes `name.cleaned.md` instead of being overwritten. Image assets for standard final Markdown are copied beside the source as `name.assets/`.
 
 `discarded.md`, `review_needed.md`, and `evidence/marketing_pages.md` include compact trace comments before each block: block id, type, page range when available, heading path, risk tags, confidence, and reason. The text itself is kept verbatim so a human can recover or audit anything that was removed from `cleaned.md`.
 
@@ -81,15 +87,15 @@ When you are satisfied with the result, run:
 kbprep_cleanup(output_root, action="finalize")
 ```
 
-Finalize removes the temporary audit/process material under `output_root` (`runs/`, `original/`, `converted.md`, `blocks.jsonl`, `discarded.md`, `review_needed.md`, `quality_report.json`, `parts/`, `images/`, and batch work folders). It keeps the source file, the source-side final Markdown, source-side assets, and a tiny `kbprep_manifest.json` or `kbprep_batch_manifest.json`. If `review_needed.md` still has content, finalize stops unless `confirm_review_needed=true` is passed.
+Finalize removes temporary audit/process material under `output_root` (`runs/`, `original/`, `converted.md`, `blocks.jsonl`, `discarded.md`, `review_needed.md`, `quality_report.json`, `parts/`, `images/`, and batch process files). It keeps the source file, the profile-specific final deliverable, and a tiny `kbprep_manifest.json` or `kbprep_batch_manifest.json`. In curated mode it preserves `obsidian/`; in standard mode it preserves the source-side Markdown and assets. If `review_needed.md` still has content, finalize stops unless `confirm_review_needed=true` is passed.
 
-If you are not sure yet, do nothing: `keep_latest` keeps only a short review window by count and age. You can also run `kbprep_cleanup(output_root, action="expired", older_than_days=7)` to remove old run history, or `kbprep_cleanup(output_root, action="all")` to remove known intermediate artifacts without touching source files or source-side final Markdown.
+If you are not sure yet, do nothing: `keep_latest` keeps only a short review window by count and age. You can also run `kbprep_cleanup(output_root, action="expired", older_than_days=7)` to remove old run history, or `kbprep_cleanup(output_root, action="all")` to remove known intermediate artifacts without checking acceptance state.
 
-Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when you want an AI or human to review uncertain blocks. Use `mode="ai_review"` only when OpenClaw subagents are available and you accept the extra model call.
+Start with `mode="rules_only"`. Use `mode="rules_plus_review_pack"` only when you want an AI or human to review uncertain blocks. Use `mode="ai_review"` only when OpenClaw subagents are available and you accept the extra model call. The standalone CLI does not yet provide a generic LLM backend; CLI users should use `rules_only` or `rules_plus_review_pack` and apply reviewed metadata patches with `kbprep-apply-review`.
 
 ## Tools
 
-- `kbprep_prepare`: main tool. Convert one local source file into clean Markdown.
+- `kbprep_prepare`: main tool. Convert one local source file into the profile-specific final deliverable.
 - `kbprep_analyze`: optional read-only check for file type, PDF subtype, text quality, and route.
 - `kbprep_preflight`: optional runtime check before large PDF/OCR work.
 - `kbprep_apply_review`: optional guarded metadata patch for human/AI review results. It cannot rewrite source text.
@@ -116,10 +122,10 @@ On first use, KBPrep creates its own Python runtime at `.kbprep/venv` inside the
 KBPrep normally runs the worker through this KBPrep-local `.kbprep/venv`. `python_path` is only an optional bootstrap interpreter used to create that venv; it is not treated as the dependency runtime.
 
 The worker is also isolated from user-site packages (`PYTHONNOUSERSITE=1`), and MinerU is resolved only from the selected venv's `Scripts/` or `bin/` directory. A system-wide `mineru` on PATH is not used.
-When an NVIDIA driver is detected and the KBPrep-local torch is CPU-only, setup installs pinned CUDA wheels (`torch==2.8.0`, `torchvision==0.23.0`, cu126 index) into `.kbprep/venv` and then re-checks torch in a fresh Python process. Set config `device_override="cpu"` to skip CUDA wheel installation.
-The worker dependency set pins MinerU `3.2.1` and PyMuPDF `1.27.2.3`. PyMuPDF powers the fast trusted PDF text-layer route; MinerU/OCR is used when diagnosis says the text layer is missing or unsafe.
+When an NVIDIA driver is detected and the KBPrep-local torch is CPU-only, setup installs compatible CUDA wheels (`torch>=2.8,<3`, `torchvision>=0.23,<1`, cu126 index) into `.kbprep/venv` and then re-checks torch in a fresh Python process. Omit `device_override` for normal automatic CPU/GPU selection; set config `device_override="cpu"` only when you explicitly want to skip CUDA setup.
+The worker dependency set supports MinerU `>=3.2.1,<4` and PyMuPDF `>=1.27,<2`. PyMuPDF powers the fast trusted PDF text-layer route; MinerU/OCR is used when diagnosis says the text layer is missing or unsafe.
 The setup result is written to `.kbprep/runtime-ready.json` so the selected Python path, CUDA action, and detected torch state are traceable.
-The ready marker includes the KBPrep version, selected Python path, worker dependency spec, and `device_override`. If any of those no longer match, KBPrep deletes only its own `.kbprep/venv` and marker, then rebuilds the runtime instead of reusing a stale or wrong environment.
+The ready marker includes the KBPrep version, selected Python path, worker dependency spec, requested device override, and actual selected device. If any of those no longer match, KBPrep deletes only its own `.kbprep/venv` and marker, then rebuilds the runtime instead of reusing a stale or wrong environment.
 
 Run `kbprep_preflight` before heavy PDF/Office conversion and check:
 
@@ -166,6 +172,21 @@ PYTHONPATH=python python -m kbprep_worker.cli --help
 printf '{"workspace_path":".kbprep/python-smoke","profile":"lite"}' | PYTHONPATH=python python -m kbprep_worker.cli preflight --json-stdin
 ```
 
+## Supported Languages
+
+KBPrep v0.5 is tuned for Simplified Chinese self-media, course, and knowledge-base source material. English support is best-effort: detail-retention and CTA detection include English step, CLI flag, URL, prompt, and subscription/join-call patterns, and `quality_report.json` records `language_detected` as `zh`, `en`, `mixed`, or `other`. Other languages are not yet tested.
+
+## Installing Python Worker Dependencies With uv
+
+The npm/OpenClaw runtime creates its own `.kbprep/venv`, so most users do not need to install Python dependencies manually. For direct worker development, `uv` is the preferred fast installer:
+
+```bash
+uv pip install --system -e ./python
+uv pip install --system -e "./python[cuda]"
+```
+
+Use the CUDA extra only for machines where GPU OCR validation is required. Normal runtime validation should let KBPrep choose CPU/GPU automatically.
+
 Worker commands write one JSON envelope to stdout:
 
 ```json
@@ -197,6 +218,9 @@ openclaw plugins inspect openclaw-kbprep --runtime --json
 ```
 
 This repository includes the compiled `dist/` runtime because OpenClaw managed installs require readable JavaScript runtime files for native plugins. Local dependency folders, local Python runtimes, raw source documents, and generated conversion outputs remain ignored.
+
+Known product and engineering gaps are tracked in [`docs/known-issues.md`](docs/known-issues.md).
+Operator and release-review workflows are tracked in [`docs/kbprep-operator-workflows.md`](docs/kbprep-operator-workflows.md).
 
 ## OpenClaw Plugin Lifecycle Checks
 

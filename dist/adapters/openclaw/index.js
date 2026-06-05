@@ -12,8 +12,8 @@ const sourceTypeSchema = Type.Union([
     Type.Literal("subtitle_transcript"),
 ], { description: "Source type override. Default 'auto'." });
 const configSchema = Type.Object({
-    device_override: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("cuda"), Type.Literal("cpu")], {
-        description: "Force device mode. Default 'auto' (detect).",
+    device_override: Type.Optional(Type.Union([Type.Literal("cuda"), Type.Literal("cpu")], {
+        description: "Advanced override for device mode. Omit to let KBPrep select the best available CPU/GPU mode automatically.",
     })),
     max_cpu_threads: Type.Optional(Type.Number({ description: "Max CPU threads for CPU-mode inference. Default 4.", default: 4 })),
     min_free_memory_gb: Type.Optional(Type.Number({ description: "Min free memory GB before batch pauses. Default 4.", default: 4 })),
@@ -25,6 +25,9 @@ const configSchema = Type.Object({
         description: "Optional absolute path to a base Python executable used only to create the KBPrep-local .kbprep/venv runtime.",
     })),
     ai_review_provider: Type.Optional(Type.String({ description: "Optional provider override for mode='ai_review'." })),
+    ai_review_backend: Type.Optional(Type.Union([Type.Literal("openclaw"), Type.Literal("local_rules"), Type.Literal("claude_code"), Type.Literal("codex")], {
+        description: "AI review backend. Default 'openclaw'. Use local_rules to skip model calls safely.",
+    })),
     ai_review_model: Type.Optional(Type.String({ description: "Optional model override for mode='ai_review'." })),
 }, { additionalProperties: false });
 function workerConfig(config) {
@@ -142,6 +145,7 @@ export default defineToolPlugin({
                 });
                 return maybeRunAiReview(result, {
                     mode: effectiveMode,
+                    ai_review_backend: config.ai_review_backend,
                     ai_review_provider: params.ai_review_provider,
                     ai_review_model: params.ai_review_model,
                 }, config, ctx, {

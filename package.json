@@ -1,6 +1,6 @@
 {
-  "name": "openclaw-kbprep",
-  "version": "0.5.0",
+  "name": "kbprep",
+  "version": "0.5.1",
   "description": "KBPrep source-to-clean-Markdown toolkit with a Python core, standalone CLI, and OpenClaw adapter.",
   "type": "module",
   "license": "MIT",
@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
+    "dist:check": "npm run build && git diff --exit-code -- dist",
     "docs:serve": "node scripts/serve-docs.mjs",
     "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
     "plugin:validate": "npm run build && openclaw plugins validate --entry ./dist/index.js",
@@ -48,7 +49,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
-    "openclaw": "2026.5.27",
+    "openclaw": "^2026.6.1",
     "typescript": "^5.9.0",
     "vitest": "^4.1.8"
   },

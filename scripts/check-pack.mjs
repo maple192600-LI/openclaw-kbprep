@@ -16,7 +16,9 @@ const requiredFiles = [
   "python/kbprep_worker/prepare_runtime.py",
   "skills/kbprep/SKILL.md",
   "docs/decoupling.md",
+  "docs/known-issues.md",
   "docs/risk-tags.md",
+  "docs/standalone-cli.md",
   "CHANGELOG.md",
   "LICENSE",
 ];

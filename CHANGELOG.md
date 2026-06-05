@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1
+
+- Renamed the npm package identity to `kbprep` while keeping `openclaw-kbprep` as the OpenClaw adapter id.
+- Added a generic AI review backend interface with OpenClaw subagent compatibility.
+- Hardened CTA rules, worker stdin handling, AI review patch parsing, error-code naming, and tracked `dist/` checks.
+- Added standalone CLI and known-issues documentation.
+
 ## 0.5.0
 
 - Added a host-agnostic Node runtime layer for the Python worker.

@@ -386,8 +386,8 @@ describe("kbprep worker pipeline", () => {
         "result = setup_env.setup_gpu('venv-python')",
         "pip_calls = [cmd for cmd in calls if cmd[:3] == ['venv-python', '-m', 'pip']]",
         "assert len(pip_calls) == 1, calls",
-        "assert 'torch==2.8.0' in pip_calls[0], pip_calls",
-        "assert 'torchvision==0.23.0' in pip_calls[0], pip_calls",
+        "assert 'torch>=2.8,<3' in pip_calls[0], pip_calls",
+        "assert 'torchvision>=0.23,<1' in pip_calls[0], pip_calls",
         "assert '--force-reinstall' in pip_calls[0], pip_calls",
         "assert 'https://download.pytorch.org/whl/cu126' in pip_calls[0], pip_calls",
         "assert calls[-2][2] == setup_env._torch_probe_code(), calls",
@@ -1130,6 +1130,86 @@ describe("kbprep worker pipeline", () => {
     }
   });
 
+  it("keeps short policy-analysis paragraphs that mention public account CTA terms", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-cta-policy-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "policy.md");
+      writeFileSync(
+        sourcePath,
+        [
+          "# 平台规则分析",
+          "",
+          "平台规则：不得诱导关注公众号，这类文案要作为违规案例记录。",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        profile: "standard",
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+
+      const runDir = envelope.data.run_dir;
+      const cleaned = readFileSync(path.join(runDir, "cleaned.md"), "utf8");
+      const discarded = readFileSync(path.join(runDir, "discarded.md"), "utf8");
+
+      expect(envelope.ok).toBe(true);
+      expect(cleaned).toContain("不得诱导关注公众号");
+      expect(discarded).not.toContain("不得诱导关注公众号");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("detects English language and preserves tutorial CTA examples", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-english-cta-"));
+    try {
+      const inputPath = path.join(root, "english.md");
+      const outputRoot = path.join(root, "out");
+      writeFileSync(
+        inputPath,
+        [
+          "# Platform Policy Tutorial",
+          "",
+          "Step 1: record threshold=0.8 and retry_count=3 before changing the campaign.",
+          "",
+          "Policy example: do not write \"scan the QR code to join our Discord\" in the landing page CTA.",
+          "",
+          "Scan the QR code to join our Discord and claim your free trial.",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare", {
+        input_path: inputPath,
+        output_root: outputRoot,
+        profile: "standard",
+        mode: "rules_only",
+        language: "en",
+        force: true,
+      });
+
+      const quality = JSON.parse(readFileSync(path.join(outputRoot, "quality_report.json"), "utf8"));
+      const cleaned = readFileSync(envelope.data.latest_outputs.cleaned_md, "utf8");
+      const discarded = readFileSync(envelope.data.latest_outputs.discarded_md, "utf8");
+      expect(quality.language_detected).toBe("en");
+      expect(cleaned).toContain("threshold=0.8");
+      expect(cleaned).toContain("Policy example");
+      expect(cleaned).not.toContain("claim your free trial");
+      expect(discarded).toContain("claim your free trial");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("cleans real Chinese CTA while preserving tutorial context", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-real-zh-"));
     try {
@@ -1379,8 +1459,10 @@ describe("kbprep worker pipeline", () => {
 
       const converted = readFileSync(path.join(envelope.data.run_dir, "converted.md"), "utf8");
       const svgText = readFileSync(path.join(outputRoot, "images", "Diagram-Test-diagram-01.svg"), "utf8");
+      const quality = JSON.parse(readFileSync(path.join(envelope.data.run_dir, "quality_report.json"), "utf8"));
       expect(envelope.data.strict_errors).toEqual([]);
       expect(converted).toContain("![Workflow diagram](images/Diagram-Test-diagram-01.svg)");
+      expect(quality.image_retention.invalid_svg_count).toBe(0);
       expect(svgText).toContain('viewBox="0 0 680 480"');
       expect(svgText).toContain('width="680"');
       expect(svgText).toContain('height="480"');
@@ -1438,6 +1520,8 @@ describe("kbprep worker pipeline", () => {
 
       expect(envelope.data.outputs.obsidian_dir).toBe(obsidianDir);
       expect(envelope.data.latest_outputs.obsidian_dir).toBe(latestObsidianDir);
+      expect(envelope.data.latest_outputs.obsidian_index).toBe(path.join(latestObsidianDir, "00-索引.md"));
+      expect(envelope.data.latest_outputs.final_artifact_type).toBe("obsidian_dir");
       expect(envelope.data.latest_outputs.final_md).toBe(null);
       expect(existsSync(sourceFinalPath)).toBe(false);
       expect(existsSync(path.join(latestObsidianDir, "00-索引.md"))).toBe(true);
@@ -1556,10 +1640,69 @@ describe("kbprep worker pipeline", () => {
       expect(existsSync(path.join(outputRoot, "quality_report.json"))).toBe(false);
       const manifest = JSON.parse(readFileSync(path.join(outputRoot, "kbprep_manifest.json"), "utf8"));
       expect(manifest.status).toBe("finalized");
+      expect(manifest.final_artifact_type).toBe("markdown");
       expect(manifest.final_md).toBe(finalPath);
       expect(manifest.source_path).toBe(sourcePath);
       expect(cleanup.data.deleted.length).toBeGreaterThan(0);
       expect(prepared.data.latest_outputs.final_md).toBe(finalPath);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("finalizes default curated Obsidian runs without deleting the Obsidian deliverable", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-curated-finalize-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "curated.md");
+      writeFileSync(
+        sourcePath,
+        [
+          "# AI 方法案例",
+          "",
+          "第一步：保留 CURATED_FINALIZE_MARKER，并记录参数 threshold=0.8。",
+          "",
+          "第二步：把流程拆成输入、判断、输出三个可验证节点。",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const prepared = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+      const obsidianDir = prepared.data.latest_outputs.obsidian_dir;
+      const obsidianIndex = prepared.data.latest_outputs.obsidian_index;
+      expect(prepared.data.latest_outputs.final_md).toBe(null);
+      expect(prepared.data.latest_outputs.final_artifact_type).toBe("obsidian_dir");
+      expect(existsSync(obsidianIndex)).toBe(true);
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(true);
+      expect(existsSync(path.join(outputRoot, "quality_report.json"))).toBe(true);
+
+      const cleanup = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+      });
+
+      expect(cleanup.ok).toBe(true);
+      expect(existsSync(sourcePath)).toBe(true);
+      expect(existsSync(obsidianDir)).toBe(true);
+      expect(readFileSync(obsidianIndex, "utf8")).toContain("[[01-完整正文]]");
+      expect(readFileSync(path.join(obsidianDir, "01-完整正文.md"), "utf8")).toContain("CURATED_FINALIZE_MARKER");
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "converted.md"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "quality_report.json"))).toBe(false);
+      const manifest = JSON.parse(readFileSync(path.join(outputRoot, "kbprep_manifest.json"), "utf8"));
+      expect(manifest.final_artifact_type).toBe("obsidian_dir");
+      expect(manifest.obsidian_dir).toBe(obsidianDir);
+      expect(manifest.obsidian_index).toBe(obsidianIndex);
+      expect(cleanup.data.final_artifact_type).toBe("obsidian_dir");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -1603,6 +1746,53 @@ describe("kbprep worker pipeline", () => {
       expect(confirmed.ok).toBe(true);
       expect(existsSync(path.join(outputRoot, "runs"))).toBe(false);
       expect(existsSync(path.join(inputDir, "guide.md"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses curated finalize when review-needed content exists unless the user confirms cleanup", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-curated-finalize-review-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      const sourcePath = path.join(inputDir, "curated-review.md");
+      writeFileSync(
+        sourcePath,
+        ["# Curated Review", "", "第一步：保留 CURATED_REVIEW_GUARD_MARKER，并设置 threshold=0.8。"].join("\n"),
+        "utf8",
+      );
+
+      const prepared = runWorker("prepare", {
+        input_path: sourcePath,
+        output_root: outputRoot,
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+      });
+      writeFileSync(path.join(outputRoot, "review_needed.md"), "needs curated human review", "utf8");
+
+      const blocked = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+      }, 1);
+
+      expect(blocked.ok).toBe(false);
+      expect(blocked.error.code).toBe("KBPREP_REVIEW_NEEDED");
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(true);
+      expect(existsSync(prepared.data.latest_outputs.obsidian_index)).toBe(true);
+
+      const confirmed = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+        confirm_review_needed: true,
+      });
+
+      expect(confirmed.ok).toBe(true);
+      expect(existsSync(path.join(outputRoot, "runs"))).toBe(false);
+      expect(existsSync(prepared.data.latest_outputs.obsidian_index)).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -3037,6 +3227,91 @@ describe("kbprep worker pipeline", () => {
       expect(readFileSync(path.join(inputDir, "beta.cleaned.md"), "utf8")).toContain("BETA_UNIQUE_MARKER");
       expect(existsSync(path.join(outputRoot, "progress.json"))).toBe(true);
       expect(existsSync(path.join(outputRoot, "failures.json"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it("records and finalizes curated Obsidian batch deliverables", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-curated-batch-"));
+    try {
+      const inputDir = path.join(root, "input");
+      const outputRoot = path.join(root, "output");
+      mkdirSync(inputDir);
+      mkdirSync(outputRoot);
+      writeFileSync(
+        path.join(inputDir, "alpha.md"),
+        [
+          "# Alpha 方法",
+          "",
+          "第一步：保留 ALPHA_CURATED_MARKER，并设置 threshold=0.8。",
+          "",
+          "第二步：把操作流程写成可复盘 SOP。",
+        ].join("\n"),
+        "utf8",
+      );
+      writeFileSync(
+        path.join(inputDir, "beta.md"),
+        [
+          "# Beta 案例",
+          "",
+          "第一步：保留 BETA_CURATED_MARKER，并记录 retry_count=3。",
+          "",
+          "第二步：保留案例里的判断标准和失败原因。",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const envelope = runWorker("prepare_batch", {
+        input_dir: inputDir,
+        output_root: outputRoot,
+        mode: "rules_only",
+        language: "zh",
+        force: true,
+        convert_jobs: 1,
+      });
+
+      const results = envelope.data.results as Array<{
+        file: string;
+        final_artifact_type: string;
+        batch_final_md?: string;
+        batch_obsidian_dir?: string;
+        batch_obsidian_index?: string;
+        latest_outputs: {
+          final_md: string | null;
+          final_artifact_type: string;
+          obsidian_dir: string;
+          obsidian_index: string;
+        };
+      }>;
+
+      expect(envelope.data.failed).toBe(0);
+      expect(results).toHaveLength(2);
+      for (const result of results) {
+        expect(result.final_artifact_type).toBe("obsidian_dir");
+        expect(result.latest_outputs.final_artifact_type).toBe("obsidian_dir");
+        expect(result.latest_outputs.final_md).toBe(null);
+        expect(result.batch_final_md).toBeUndefined();
+        expect(result.batch_obsidian_dir).toBe(result.latest_outputs.obsidian_dir);
+        expect(result.batch_obsidian_index).toBe(result.latest_outputs.obsidian_index);
+        expect(existsSync(result.batch_obsidian_index!)).toBe(true);
+      }
+
+      const cleanup = runWorker("cleanup", {
+        output_root: outputRoot,
+        action: "finalize",
+      });
+
+      expect(cleanup.ok).toBe(true);
+      const manifest = JSON.parse(readFileSync(path.join(outputRoot, "kbprep_batch_manifest.json"), "utf8"));
+      expect(manifest.total_finalized).toBe(2);
+      for (const entry of manifest.finalized) {
+        expect(entry.final_artifact_type).toBe("obsidian_dir");
+        expect(existsSync(entry.obsidian_dir)).toBe(true);
+        expect(existsSync(entry.obsidian_index)).toBe(true);
+      }
+      expect(existsSync(path.join(outputRoot, "results.json"))).toBe(false);
+      expect(existsSync(path.join(outputRoot, "progress.json"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

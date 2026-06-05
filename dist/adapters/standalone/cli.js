@@ -6,7 +6,7 @@ const HELP = {
     preflight: [
         "Usage: kbprep-preflight [--workdir <dir>] [--profile lite|standard] [--config-file <file>]",
         "",
-        "Checks KBPrep runtime readiness without requiring OpenClaw.",
+        "Checks KBPrep runtime readiness without requiring OpenClaw. Omit device_override to let KBPrep choose CPU/GPU automatically.",
     ].join("\n"),
     diagnose: [
         "Usage: kbprep-analyze --input <file> [--output <dir>] [--source-type auto|pdf_like|markdown_note|generic_block|subtitle_transcript] [--config-file <file>]",
@@ -16,7 +16,7 @@ const HELP = {
     prepare: [
         "Usage: kbprep-prepare --input <file> --output <dir> [--profile lite|standard|curated_obsidian_kb] [--mode rules_only|rules_plus_review_pack] [--force] [--config-file <file>]",
         "",
-        "Converts one local source file into clean Markdown and optional curated Obsidian output.",
+        "Converts one local source file. Default profile curated_obsidian_kb publishes an Obsidian deliverable; standard publishes source-side Markdown.",
     ].join("\n"),
     apply_review: [
         "Usage: kbprep-apply-review --run-dir <dir> --patch-file <json> [--config-file <file>]",
@@ -26,7 +26,7 @@ const HELP = {
     cleanup: [
         "Usage: kbprep-cleanup --output <dir> [--action finalize|expired|all] [--older-than-days <n>] [--dry-run] [--config-file <file>]",
         "",
-        "Cleans intermediate KBPrep artifacts while preserving source-side final outputs.",
+        "Cleans intermediate KBPrep artifacts while preserving the profile-specific final deliverable.",
     ].join("\n"),
     prepare_batch: [
         "Usage: kbprep-batch --input <dir> --output <dir> [--profile lite|standard|curated_obsidian_kb] [--mode rules_only|rules_plus_review_pack] [--convert-jobs <n>] [--config-file <file>]",
@@ -227,7 +227,9 @@ function readDeviceOverride(options, fileConfig) {
     const raw = readString(options, "device_override") ?? readOptionalString(fileConfig.device_override);
     if (!raw)
         return undefined;
-    if (raw === "auto" || raw === "cuda" || raw === "cpu")
+    if (raw === "auto")
+        return undefined;
+    if (raw === "cuda" || raw === "cpu")
         return raw;
     throw new Error(`Invalid device_override: ${raw}`);
 }

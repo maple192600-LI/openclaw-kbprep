@@ -4,10 +4,10 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RUNTIME_MARKER_SCHEMA = "kbprep.local_venv.v1";
-const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]==3.2.1;PyMuPDF==1.27.2.3;beautifulsoup4==4.14.3;lxml==6.0.2";
+const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]>=3.2.1,<4;PyMuPDF>=1.27,<2;beautifulsoup4==4.14.3;lxml==6.0.2";
 
 export type RuntimeConfig = {
-  device_override?: "auto" | "cuda" | "cpu";
+  device_override?: "cuda" | "cpu";
   max_cpu_threads?: number;
   min_free_memory_gb?: number;
   mineru_timeout_seconds?: number;
@@ -62,19 +62,21 @@ export async function ensurePythonRuntime(config?: RuntimeConfig): Promise<strin
     ["-m", "kbprep_worker.cli", "setup-env", "--json-stdin"],
     "detect hardware and tune KBPrep local Python dependencies",
     30 * 60_000,
-    JSON.stringify({ device_override: config?.device_override ?? "auto" }),
+    JSON.stringify({ device_override: config?.device_override }),
   );
+  const setupEnvelope = parseSetupEnvelope(setupResult.stdout);
   writeFileSync(pluginVenvReadyMarker(), JSON.stringify({
     schema: RUNTIME_MARKER_SCHEMA,
     created_at: new Date().toISOString(),
     plugin_version: pluginPackageVersion(),
     python_executable: pythonPath,
-    device_override: effectiveDeviceOverride(config),
+    requested_device_override: config?.device_override ?? null,
+    actual_device: actualDeviceFromSetupEnvelope(setupEnvelope),
     python_project: {
       path: pluginPythonProjectDir(),
       dependency_spec: PYTHON_WORKER_DEPENDENCY_SPEC,
     },
-    setup_env: parseSetupEnvelope(setupResult.stdout),
+    setup_env: setupEnvelope,
   }, null, 2), "utf-8");
   return pythonPath;
 }
@@ -149,7 +151,7 @@ export function isRuntimeMarkerCurrent(marker: unknown, config?: RuntimeConfig):
     data.schema === RUNTIME_MARKER_SCHEMA
     && data.plugin_version === pluginPackageVersion()
     && data.python_executable === pluginVenvPythonPath()
-    && data.device_override === effectiveDeviceOverride(config)
+    && requestedDeviceOverride(data) === (config?.device_override ?? null)
     && pythonProject?.dependency_spec === PYTHON_WORKER_DEPENDENCY_SPEC
     && setupEnv?.ok === true
     && !hasCudaSetupFailure(setupData)
@@ -162,8 +164,13 @@ function hasCudaSetupFailure(setupData?: Record<string, unknown>): boolean {
   return actions.some((action) => typeof action === "string" && action.startsWith("cuda_install_failed"));
 }
 
-function effectiveDeviceOverride(config?: RuntimeConfig): "auto" | "cuda" | "cpu" {
-  return config?.device_override ?? "auto";
+function requestedDeviceOverride(marker: Record<string, unknown>): "cuda" | "cpu" | null {
+  if ("requested_device_override" in marker) {
+    return marker.requested_device_override === "cuda" || marker.requested_device_override === "cpu"
+      ? marker.requested_device_override
+      : null;
+  }
+  return marker.device_override === "cuda" || marker.device_override === "cpu" ? marker.device_override : null;
 }
 
 function pluginPackageVersion(): string {
@@ -240,4 +247,12 @@ function parseSetupEnvelope(stdout: string): unknown {
   } catch {
     return { raw_stdout_preview: trimmed.slice(0, 500) };
   }
+}
+
+function actualDeviceFromSetupEnvelope(envelope: unknown): string | null {
+  if (!envelope || typeof envelope !== "object") return null;
+  const data = (envelope as Record<string, unknown>).data;
+  if (!data || typeof data !== "object") return null;
+  const device = (data as Record<string, unknown>).device;
+  return typeof device === "string" ? device : null;
 }
