@@ -36,7 +36,7 @@ kbprep-batch --help
 
 `kbprep-prepare` writes process artifacts under the output directory and publishes a profile-specific final deliverable:
 
-- Default `--profile curated_obsidian_kb`: use `latest_outputs.obsidian_dir` and `latest_outputs.obsidian_index`. `latest_outputs.final_md` is intentionally `null`.
+- Default `--profile curated_obsidian_kb`: use `latest_outputs.obsidian_dir`, `latest_outputs.obsidian_index`, and `latest_outputs.obsidian_complete`. The complete body note is named from the source title or source filename. `latest_outputs.final_md` is intentionally `null`.
 - `--profile standard`: use `latest_outputs.final_md`, the source-side Markdown file beside the source.
 
 Use `kbprep-cleanup --action finalize` only after checking `quality_report.json`, `discarded.md`, and `review_needed.md`. Finalize preserves the final deliverable: `obsidian/` for curated runs, or source-side Markdown/assets for standard runs.

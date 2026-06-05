@@ -123,13 +123,17 @@ def _batch_final_fields_from_result(data: dict) -> dict:
 
     obsidian_dir = latest_outputs.get("obsidian_dir")
     obsidian_index = latest_outputs.get("obsidian_index")
+    obsidian_complete = latest_outputs.get("obsidian_complete")
     if artifact_type == "obsidian_dir" or obsidian_dir or obsidian_index:
         if obsidian_dir and obsidian_index and Path(obsidian_dir).is_dir() and Path(obsidian_index).is_file():
-            return {
+            fields = {
                 "final_artifact_type": "obsidian_dir",
                 "batch_obsidian_dir": obsidian_dir,
                 "batch_obsidian_index": obsidian_index,
             }
+            if obsidian_complete and Path(obsidian_complete).is_file():
+                fields["batch_obsidian_complete"] = obsidian_complete
+            return fields
     return {}
 
 

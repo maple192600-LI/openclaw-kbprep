@@ -480,6 +480,7 @@ def run(data: dict) -> None:
     # Final output
     chunks_dir = run_dir / "chunks"
     chunk_count = len(list(chunks_dir.glob("*.md"))) if chunks_dir.exists() else 0
+    obsidian_complete = _obsidian_complete_path(run_dir / "obsidian")
     run_outputs = {
         "converted_md": str(run_dir / "converted.md"),
         "normalized_md": str(run_dir / "normalized.md"),
@@ -495,6 +496,7 @@ def run(data: dict) -> None:
         "images_dir": str(run_dir / "images"),
         "obsidian_dir": str(run_dir / "obsidian") if (run_dir / "obsidian").exists() else None,
         "obsidian_index": str(run_dir / "obsidian" / "00-索引.md") if (run_dir / "obsidian" / "00-索引.md").exists() else None,
+        "obsidian_complete": str(obsidian_complete) if obsidian_complete else None,
         "review_pack": str(run_dir / "review_pack.json") if (run_dir / "review_pack.json").exists() else None,
     }
     if strict_errors:
@@ -534,6 +536,18 @@ def _validate_convertible_container(input_p: Path) -> None:
             f"{input_p.name} is not a valid Office ZIP container. Check whether the file is corrupted or mislabeled.",
             {"extension": input_p.suffix.lower()},
         )
+
+
+def _obsidian_complete_path(obsidian_dir: Path) -> Path | None:
+    if not obsidian_dir.exists():
+        return None
+    legacy = obsidian_dir / "01-完整正文.md"
+    if legacy.exists():
+        return legacy
+    candidates = [path for path in obsidian_dir.glob("*.md") if path.name != "00-索引.md"]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
 
 
 def _run_mineru_conversion(

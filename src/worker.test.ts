@@ -892,14 +892,14 @@ describe("kbprep worker pipeline", () => {
         "(run_dir / 'obsidian').mkdir()",
         "(run_dir / 'chunks' / 'chunk_001.md').write_text('Method body. ' * 120, encoding='utf-8')",
         "(run_dir / 'cleaned.md').write_text('Step 1: configure threshold=0.82 and visit https://example.com/config.\\n```python\\nretry_count = 3\\n```\\n', encoding='utf-8')",
-        "(run_dir / 'obsidian' / '01-完整正文.md').write_text('Step 1: configure the dashboard.\\n', encoding='utf-8')",
+        "(run_dir / 'obsidian' / 'source-title.md').write_text('Step 1: configure the dashboard.\\n', encoding='utf-8')",
         "blocks = [",
         "  {'block_id': 'step1', 'status': 'keep', 'type': 'operation_step', 'text': 'Step 1: configure threshold=0.82 and visit https://example.com/config.', 'protected': True},",
         "  {'block_id': 'code1', 'status': 'keep', 'type': 'code', 'text': '```python\\nretry_count = 3\\n```', 'protected': True},",
         "]",
         "report = run_quality_check(blocks, str(run_dir), 'markdown_note', {'file_id': 'obsidian-primary-test'})",
         "retention = report['output_retention']",
-        "assert retention['primary_output']['path'].endswith('01-完整正文.md'), retention",
+        "assert retention['primary_output']['path'].endswith('source-title.md'), retention",
         "assert retention['primary_output']['missing_total'] > 0, retention",
         "assert any('final knowledge output' in err for err in report['strict_errors']), report",
       ].join("\n"),
@@ -1386,7 +1386,12 @@ describe("kbprep worker pipeline", () => {
         "    ]",
         "    blocks = apply_curated_obsidian_policy(blocks)",
         "    render_obsidian_vault(blocks, str(run_dir), source_title='普通人的AI应用宝典', source_hash='sha', run_id='run')",
-        "    complete = (run_dir / 'obsidian' / '01-完整正文.md').read_text(encoding='utf-8')",
+        "    complete_path = run_dir / 'obsidian' / '普通人的AI应用宝典.md'",
+        "    assert complete_path.exists(), list((run_dir / 'obsidian').glob('*.md'))",
+        "    assert not (run_dir / 'obsidian' / '01-完整正文.md').exists()",
+        "    complete = complete_path.read_text(encoding='utf-8')",
+        "    index = (run_dir / 'obsidian' / '00-索引.md').read_text(encoding='utf-8')",
+        "    assert '[[普通人的AI应用宝典|完整正文]]' in index, index",
         "    index = (run_dir / 'obsidian' / '00-索引.md').read_text(encoding='utf-8')",
         "    discarded = (run_dir / 'obsidian' / '_audit' / 'discarded.md').read_text(encoding='utf-8')",
         "    source_map = (run_dir / 'obsidian' / '_audit' / 'source-map.jsonl').read_text(encoding='utf-8')",
@@ -1446,7 +1451,7 @@ describe("kbprep worker pipeline", () => {
         "    ]",
         "    blocks = apply_curated_obsidian_policy(blocks)",
         "    render_obsidian_vault(blocks, str(run_dir), source_title='founders-playbook', source_hash='sha', run_id='run')",
-        "    complete = (run_dir / 'obsidian' / '01-完整正文.md').read_text(encoding='utf-8')",
+        "    complete = (run_dir / 'obsidian' / 'founders-playbook.md').read_text(encoding='utf-8')",
         "    discarded = (run_dir / 'obsidian' / '_audit' / 'discarded.md').read_text(encoding='utf-8')",
         "    assert '<!-- page:' not in complete, complete",
         "    assert 'Chapter 4\\nMVP 阶段\\n15' not in complete, complete",
@@ -1580,25 +1585,30 @@ describe("kbprep worker pipeline", () => {
       const runDir = envelope.data.run_dir;
       const obsidianDir = path.join(runDir, "obsidian");
       const latestObsidianDir = path.join(outputRoot, "obsidian");
-      const complete = readFileSync(path.join(obsidianDir, "01-完整正文.md"), "utf8");
+      const completePath = path.join(obsidianDir, "普通人的AI应用宝典.md");
+      const latestCompletePath = path.join(latestObsidianDir, "普通人的AI应用宝典.md");
+      const complete = readFileSync(completePath, "utf8");
       const latestCleaned = readFileSync(envelope.data.latest_outputs.cleaned_md, "utf8");
       const sourceFinalPath = path.join(inputDir, "鏅€氫汉鐨凙I搴旂敤瀹濆吀.cleaned.md");
       const index = readFileSync(path.join(obsidianDir, "00-索引.md"), "utf8");
       const discarded = readFileSync(path.join(obsidianDir, "_audit", "discarded.md"), "utf8");
 
       expect(envelope.data.outputs.obsidian_dir).toBe(obsidianDir);
+      expect(envelope.data.outputs.obsidian_complete).toBe(completePath);
       expect(envelope.data.latest_outputs.obsidian_dir).toBe(latestObsidianDir);
       expect(envelope.data.latest_outputs.obsidian_index).toBe(path.join(latestObsidianDir, "00-索引.md"));
+      expect(envelope.data.latest_outputs.obsidian_complete).toBe(latestCompletePath);
       expect(envelope.data.latest_outputs.final_artifact_type).toBe("obsidian_dir");
       expect(envelope.data.latest_outputs.final_md).toBe(null);
       expect(existsSync(sourceFinalPath)).toBe(false);
       expect(existsSync(path.join(latestObsidianDir, "00-索引.md"))).toBe(true);
+      expect(existsSync(latestCompletePath)).toBe(true);
       expect(complete).not.toContain("Gary:");
       expect(latestCleaned).not.toContain("Gary:");
       expect(complete).not.toContain("海外 AI 自媒体博主");
       expect(complete).toContain("为什么在 YouTube 做 AI 内容出海？");
       expect(complete).toContain("脚本测试");
-      expect(index).toContain("[[01-完整正文]]");
+      expect(index).toContain("[[普通人的AI应用宝典|完整正文]]");
       expect(index).toContain("[[案例/");
       expect(discarded).toContain("author_identity");
     } finally {
@@ -1747,9 +1757,12 @@ describe("kbprep worker pipeline", () => {
       });
       const obsidianDir = prepared.data.latest_outputs.obsidian_dir;
       const obsidianIndex = prepared.data.latest_outputs.obsidian_index;
+      const obsidianComplete = prepared.data.latest_outputs.obsidian_complete;
       expect(prepared.data.latest_outputs.final_md).toBe(null);
       expect(prepared.data.latest_outputs.final_artifact_type).toBe("obsidian_dir");
       expect(existsSync(obsidianIndex)).toBe(true);
+      expect(obsidianComplete).toBe(path.join(obsidianDir, "curated.md"));
+      expect(existsSync(obsidianComplete)).toBe(true);
       expect(existsSync(path.join(outputRoot, "runs"))).toBe(true);
       expect(existsSync(path.join(outputRoot, "quality_report.json"))).toBe(true);
 
@@ -1761,8 +1774,8 @@ describe("kbprep worker pipeline", () => {
       expect(cleanup.ok).toBe(true);
       expect(existsSync(sourcePath)).toBe(true);
       expect(existsSync(obsidianDir)).toBe(true);
-      expect(readFileSync(obsidianIndex, "utf8")).toContain("[[01-完整正文]]");
-      expect(readFileSync(path.join(obsidianDir, "01-完整正文.md"), "utf8")).toContain("CURATED_FINALIZE_MARKER");
+      expect(readFileSync(obsidianIndex, "utf8")).toContain("[[curated|完整正文]]");
+      expect(readFileSync(obsidianComplete, "utf8")).toContain("CURATED_FINALIZE_MARKER");
       expect(existsSync(path.join(outputRoot, "runs"))).toBe(false);
       expect(existsSync(path.join(outputRoot, "converted.md"))).toBe(false);
       expect(existsSync(path.join(outputRoot, "quality_report.json"))).toBe(false);
@@ -1770,6 +1783,7 @@ describe("kbprep worker pipeline", () => {
       expect(manifest.final_artifact_type).toBe("obsidian_dir");
       expect(manifest.obsidian_dir).toBe(obsidianDir);
       expect(manifest.obsidian_index).toBe(obsidianIndex);
+      expect(manifest.obsidian_complete).toBe(obsidianComplete);
       expect(cleanup.data.final_artifact_type).toBe("obsidian_dir");
     } finally {
       rmSync(root, { recursive: true, force: true });

@@ -172,9 +172,11 @@ describe("openclaw-kbprep", () => {
     expect(payload.data.latest_outputs.diagnosis_report).toContain("diagnosis_report.json");
     expect(payload.data.latest_outputs.obsidian_dir).toContain("obsidian");
     expect(payload.data.latest_outputs.obsidian_index).toContain("00-索引.md");
+    expect(payload.data.latest_outputs.obsidian_complete).toContain("raw.md");
 
     const cleaned = await readFile(payload.data.latest_outputs.cleaned_md, "utf-8");
     const obsidianIndex = await readFile(join(payload.data.latest_outputs.obsidian_dir, "00-索引.md"), "utf-8");
+    const obsidianComplete = await readFile(payload.data.latest_outputs.obsidian_complete, "utf-8");
     const discarded = await readFile(payload.data.latest_outputs.discarded_md, "utf-8");
     const diagnosisReport = JSON.parse(await readFile(payload.data.latest_outputs.diagnosis_report, "utf-8"));
     expect(diagnosisReport.schema).toBe("kbprep.diagnosis_report.v1");
@@ -182,7 +184,8 @@ describe("openclaw-kbprep", () => {
     expect(diagnosisReport.conversion_strategy).toBe("direct");
     expect(cleaned).toContain("第一步，打开工具后台");
     expect(cleaned).not.toContain("扫码入群领取体验卡");
-    expect(obsidianIndex).toContain("[[01-完整正文]]");
+    expect(obsidianIndex).toContain("[[raw|完整正文]]");
+    expect(obsidianComplete).toContain("第一步，打开工具后台");
     expect(discarded).toContain("扫码入群领取体验卡");
   }, 30_000);
 

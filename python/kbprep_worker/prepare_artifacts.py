@@ -24,6 +24,7 @@ def latest_output_paths(root_p: Path, input_p: Path | None = None, profile: str 
     final_assets_dir = (source_final_assets_dir(input_p) if input_p else root_p / "images") if source_side_final else None
     obsidian_dir = root_p / "obsidian"
     obsidian_index = obsidian_dir / "00-索引.md"
+    obsidian_complete = _obsidian_complete_path(obsidian_dir)
     review_pack = root_p / "review_pack.json"
     return {
         "converted_md": str(root_p / "converted.md"),
@@ -42,8 +43,21 @@ def latest_output_paths(root_p: Path, input_p: Path | None = None, profile: str 
         "images_dir": str(root_p / "images"),
         "obsidian_dir": str(obsidian_dir) if obsidian_dir.exists() else None,
         "obsidian_index": str(obsidian_index) if obsidian_index.exists() else None,
+        "obsidian_complete": str(obsidian_complete) if obsidian_complete else None,
         "review_pack": str(review_pack) if review_pack.exists() else None,
     }
+
+
+def _obsidian_complete_path(obsidian_dir: Path) -> Path | None:
+    if not obsidian_dir.exists():
+        return None
+    legacy = obsidian_dir / "01-完整正文.md"
+    if legacy.exists():
+        return legacy
+    candidates = [path for path in obsidian_dir.glob("*.md") if path.name != "00-索引.md"]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
 
 
 def publish_latest_outputs(run_dir: Path, root_p: Path, input_p: Path, profile: str = "standard") -> dict:

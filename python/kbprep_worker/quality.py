@@ -705,6 +705,14 @@ def _primary_final_output_path(run_p: Path, cleaned_path: Path) -> Path:
     obsidian_complete = run_p / "obsidian" / "01-完整正文.md"
     if obsidian_complete.exists():
         return obsidian_complete
+    obsidian_dir = run_p / "obsidian"
+    if obsidian_dir.exists():
+        complete_candidates = [
+            path for path in obsidian_dir.glob("*.md")
+            if path.name != "00-索引.md"
+        ]
+        if len(complete_candidates) == 1:
+            return complete_candidates[0]
     return cleaned_path
 
 
