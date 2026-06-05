@@ -25,6 +25,9 @@ VISUAL_CHAPTER_SEPARATOR_RE = re.compile(
     r"^[=\-—_]{3,}\s*(?:第[一二三四五六七八九十百\d]+[章节篇部分]?|Chapter\s+\d+)\s*[=\-—_]{3,}$",
     re.IGNORECASE,
 )
+INTERNAL_PAGE_MARKER_RE = re.compile(r"^<!--\s*page:\s*\d+\s*-->$", re.IGNORECASE)
+SLIDE_CHAPTER_LABEL_RE = re.compile(r"^Chapter\s+\d+\s*$", re.IGNORECASE)
+SLIDE_PAGE_NUMBER_RE = re.compile(r"^\d{1,4}$")
 
 SOCIAL_PROFILE_LABELS = [
     "讲解",
@@ -188,6 +191,20 @@ BRAND_PROGRAM_PACKAGING_TERMS = [
     "SCAI实验室",
     "航海家AI大会",
 ]
+TRANSLATOR_BACK_MATTER_TERMS = [
+    "译后记",
+    "本译本仅供",
+    "内部研究",
+    "不做商业发行",
+    "欢迎在下面这些地方找到我",
+    "B 站",
+    "space.bilibili.com",
+    "小红书",
+    "公众号",
+    "YouTube",
+    "官网",
+    "huasheng.ai",
+]
 
 
 def apply_curated_obsidian_policy(blocks: list[dict]) -> list[dict]:
@@ -198,10 +215,16 @@ def apply_curated_obsidian_policy(blocks: list[dict]) -> list[dict]:
     method or case signals is kept, and ambiguous identity-like text goes to
     review instead of being silently removed.
     """
+    current_slide_chapter_title: str | None = None
+
     for index, block in enumerate(blocks):
         text = block.get("text", "").strip()
         if not text:
             continue
+
+        slide_chapter_title = _slide_chapter_divider_title(text)
+        if slide_chapter_title:
+            current_slide_chapter_title = slide_chapter_title
 
         if block.get("type") in IMAGE_TYPES:
             if _is_knowledge_diagram(block):
@@ -217,8 +240,26 @@ def apply_curated_obsidian_policy(blocks: list[dict]) -> list[dict]:
         if block.get("status") != "keep":
             continue
 
+        if _is_internal_page_marker(text):
+            _discard(block, "page_marker", "drop_internal_page_marker_for_readable_kb", 0.99)
+            continue
+
+        if slide_chapter_title:
+            _discard(block, "slide_chapter_divider", "drop_standalone_slide_chapter_divider_for_kb", 0.94)
+            continue
+
+        curated_chapter_text = _curated_slide_chapter_body(text, current_slide_chapter_title)
+        if curated_chapter_text:
+            block["curated_text"] = curated_chapter_text
+            _append_tag(block, "slide_chapter_heading_normalized")
+            continue
+
         if _is_visual_chapter_separator(text):
             _discard(block, "layout_separator", "drop_visual_chapter_separator_for_obsidian_kb", 0.95)
+            continue
+
+        if _is_translator_marketing_back_matter(text):
+            _discard(block, "translator_marketing_back_matter", "drop_translator_social_back_matter_for_kb", 0.94)
             continue
 
         if _is_front_matter_social_profile(blocks, index, text):
@@ -365,6 +406,8 @@ def _renderable_text(block: dict) -> str:
     text = (block.get("curated_text") or block.get("text") or "").strip()
     if not text:
         return ""
+    if _is_internal_page_marker(text):
+        return ""
     if block.get("type") in IMAGE_TYPES and not _is_knowledge_diagram(block):
         return ""
     return text
@@ -386,6 +429,94 @@ def _is_knowledge_diagram(block: dict) -> bool:
 
 def _join_blocks(blocks: list[dict]) -> str:
     return "\n\n".join(_renderable_text(block) for block in blocks if _renderable_text(block))
+
+
+def _is_internal_page_marker(text: str) -> bool:
+    return bool(INTERNAL_PAGE_MARKER_RE.match(text.strip()))
+
+
+def _slide_chapter_divider_title(text: str) -> str | None:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) < 3 or len(lines) > 5:
+        return None
+    if not SLIDE_CHAPTER_LABEL_RE.match(lines[0]):
+        return None
+    if not SLIDE_PAGE_NUMBER_RE.match(lines[-1]):
+        return None
+    title_lines = lines[1:-1]
+    if any(len(line) > 40 or re.search(r"[。！？!?；;]", line) for line in title_lines):
+        return None
+    title = " ".join(title_lines).strip()
+    if not title or len(title) > 80:
+        return None
+    return title
+
+
+def _curated_slide_chapter_body(text: str, title_hint: str | None) -> str | None:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) < 2 or not SLIDE_CHAPTER_LABEL_RE.match(lines[0]):
+        return None
+
+    title = (title_hint or "").strip()
+    body = "\n".join(_drop_trailing_slide_page_number(lines[1:])).strip()
+    if not body:
+        return None
+
+    if title:
+        body = _strip_slide_title_prefix(body, title)
+    elif not title:
+        title = lines[1].strip()
+        body = "\n".join(_drop_trailing_slide_page_number(lines[2:])).strip()
+
+    if not title or not body:
+        return None
+    return f"## {title}\n\n{body}"
+
+
+def _drop_trailing_slide_page_number(lines: list[str]) -> list[str]:
+    if len(lines) >= 2 and SLIDE_PAGE_NUMBER_RE.match(lines[-1].strip()):
+        return lines[:-1]
+    return lines
+
+
+def _strip_slide_title_prefix(body: str, title: str) -> str:
+    prefix_end = _matching_prefix_end(body, title)
+    if prefix_end is None:
+        return body
+    remainder = body[prefix_end:].lstrip()
+    repeated_end = _matching_prefix_end(remainder, title)
+    if repeated_end is not None:
+        second_remainder = remainder[repeated_end:].lstrip()
+        if second_remainder and second_remainder[0] not in {"的", "是", "要", "需", "会", "能", "中"}:
+            return second_remainder
+        return remainder
+    if not remainder or remainder[0] in {"的", "是", "要", "需", "会", "能", "中"}:
+        return body
+    return remainder
+
+
+def _matching_prefix_end(text: str, title: str) -> int | None:
+    target = re.sub(r"\s+", "", title)
+    if not target:
+        return None
+    compact = ""
+    for idx, char in enumerate(text):
+        if char.isspace():
+            continue
+        compact += char
+        if compact == target:
+            return idx + 1
+        if not target.startswith(compact):
+            return None
+    return None
+
+
+def _is_translator_marketing_back_matter(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text)
+    if "译后记" not in compact and "本译本仅供" not in compact:
+        return False
+    hits = sum(1 for term in TRANSLATOR_BACK_MATTER_TERMS if term.replace(" ", "") in compact)
+    return hits >= 3
 
 
 def _render_topic_notes(kept_blocks: list[dict], vault_dir: Path) -> tuple[list[dict], list[dict]]:
