@@ -12,6 +12,8 @@ OpenClaw is one supported host adapter, not the project boundary. The npm packag
 
 Public showcase page source: [`docs/index.html`](docs/index.html). Enable GitHub Pages from the repository `docs/` folder to publish it as a project page.
 
+For developers and AI coding agents, start with the repository map in [`docs/repository-index.md`](docs/repository-index.md).
+
 For local preview, prefer the HTTP preview instead of opening the Windows `file://` path directly:
 
 ```bash
