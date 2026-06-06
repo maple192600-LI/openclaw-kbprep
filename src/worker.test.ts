@@ -1061,6 +1061,30 @@ describe("kbprep worker pipeline", () => {
     );
   });
 
+  it("derives a readable content title from PDF cover text before cleanup discards the cover", () => {
+    runPython(
+      [
+        "from pathlib import Path",
+        "from tempfile import TemporaryDirectory",
+        "from kbprep_worker.prepare_diagnosis import source_title_for_render",
+        "with TemporaryDirectory() as tmp:",
+        "    converted = Path(tmp) / 'converted.md'",
+        "    converted.write_text('\\n'.join([",
+        "        '<!-- page: 1 -->',",
+        "        '',",
+        "        \"The Founder\\'s Playbook创始人行动手册✻ Claude\",",
+        "        'Anthropic · 2026 年 5 月Building an AI-Native Startup花叔 译横版 36 页中文译本仅供个人学习与内部研究',",
+        "        '',",
+        "        '<!-- page: 2 -->',",
+        "        '目录',",
+        "    ]), encoding='utf-8')",
+        "    title = source_title_for_render(Path(tmp) / 'founders-playbook.pdf', converted)",
+        "    assert title == '创始人行动手册', title",
+      ].join("\n"),
+      [],
+    );
+  });
+
   it("classifies long heading-rich documents with colon lines as reports, not transcripts", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-worker-"));
     try {
