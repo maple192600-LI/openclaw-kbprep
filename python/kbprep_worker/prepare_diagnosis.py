@@ -80,4 +80,94 @@ def source_title_for_render(input_p: Path, converted_path: Path) -> str:
                     return match.group(1).strip()
         except Exception:
             pass
+    if input_p.suffix.lower() not in DIRECT_EXTENSIONS:
+        title = _content_title_from_converted(converted_path)
+        if title:
+            return title
     return input_p.stem
+
+
+def _content_title_from_converted(converted_path: Path) -> str | None:
+    if not converted_path.exists():
+        return None
+    try:
+        lines = converted_path.read_text(encoding="utf-8").splitlines()[:80]
+    except Exception:
+        return None
+
+    candidates: list[tuple[int, int, str]] = []
+    for index, line in enumerate(lines):
+        for candidate in _title_candidates_from_line(line):
+            score = _title_candidate_score(candidate, index)
+            if score > 0:
+                candidates.append((score, -index, candidate))
+
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)
+    return candidates[0][2]
+
+
+def _title_candidates_from_line(line: str) -> list[str]:
+    text = line.strip()
+    if not text or re.match(r"^<!--\s*page:\s*\d+\s*-->$", text, re.IGNORECASE):
+        return []
+    text = re.sub(r"^#{1,6}\s*", "", text).strip()
+    if not text:
+        return []
+
+    fragments = [text]
+    for delimiter in ["✻", "|", "｜"]:
+        if delimiter in text:
+            fragments.append(text.split(delimiter, 1)[0].strip())
+    for match in re.finditer(r"[\u4e00-\u9fff][\u4e00-\u9fffA-Za-z0-9《》「」：:·\- ]{2,39}", text):
+        fragments.append(match.group(0).strip())
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for fragment in fragments:
+        candidate = _normalize_title_candidate(fragment)
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            candidates.append(candidate)
+    return candidates
+
+
+def _normalize_title_candidate(text: str) -> str | None:
+    candidate = text.strip().strip("#*-_ \t")
+    candidate = re.sub(r"\s+", " ", candidate)
+    if not candidate:
+        return None
+
+    # Prefer the Chinese title in bilingual cover lines such as
+    # "The Founder's Playbook创始人行动手册".
+    cjk_tail = re.search(r"[A-Za-z][A-Za-z'’ -]{3,}([\u4e00-\u9fff][\u4e00-\u9fffA-Za-z0-9《》「」：:·\- ]{2,39})$", candidate)
+    if cjk_tail:
+        candidate = cjk_tail.group(1).strip()
+
+    candidate = re.split(r"(?:Anthropic|Claude|Building an|花叔|译|横版|中文译本|仅供|内部研究)", candidate, maxsplit=1)[0].strip()
+    candidate = candidate.strip(" ·:：-—_")
+    if not candidate:
+        return None
+    if re.fullmatch(r"\d{1,4}", candidate):
+        return None
+    return candidate
+
+
+def _title_candidate_score(candidate: str, line_index: int) -> int:
+    compact = re.sub(r"\s+", "", candidate)
+    if len(compact) < 4 or len(compact) > 40:
+        return 0
+    if compact in {"目录", "资源", "Resources", "Contents"}:
+        return 0
+    if re.search(r"(目录|Chapter\d*|Resources|Anthropic|Claude|译|中文译本|仅供|内部研究|公众号|小红书|YouTube|B站)", compact, re.IGNORECASE):
+        return 0
+
+    score = 100 - min(line_index, 30)
+    if re.search(r"[\u4e00-\u9fff]", compact):
+        score += 20
+    if re.search(r"(手册|指南|报告|白皮书|行动|Playbook|Guide|Manual|Report)", candidate, re.IGNORECASE):
+        score += 15
+    if re.search(r"[。！？!?；;]", candidate):
+        score -= 40
+    return score
