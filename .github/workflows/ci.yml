@@ -19,7 +19,7 @@ env:
 
 jobs:
   node:
-    name: Node, plugin, and package checks
+    name: Node, CLI, and package checks
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -43,20 +43,10 @@ jobs:
 
       - name: Install Python worker dependencies
         timeout-minutes: 15
-        run: uv pip install --system -e python
+        run: uv pip install --system -e "python[dev]"
 
-      - run: npm run build
-
-      - run: git diff --exit-code -- dist
-
-      - run: npx tsc -p tsconfig.json --noEmit
-
-      - run: npx vitest run --pool=forks --maxWorkers=1 --testTimeout=30000 --reporter=default --reporter=json --outputFile.json=.kbprep/vitest-ci-report.json
-        timeout-minutes: 12
-
-      - run: npm run plugin:validate
-
-      - run: npm run pack:check
+      - run: npm run release:check
+        timeout-minutes: 25
 
       - name: Standalone CLI smoke
         env:
@@ -88,7 +78,7 @@ jobs:
           printf '{"workspace_path":".kbprep/python-ci-smoke","profile":"lite"}' | python -m kbprep_worker.cli preflight --json-stdin
 
   python-worker:
-    name: Python worker help on ${{ matrix.python-version }}
+    name: Python worker unit tests on ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -102,10 +92,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Python worker import and help smoke
+      - name: Python worker import, help, and unit tests
         env:
           PYTHONPATH: python
-        run: python -m kbprep_worker.cli --help
+        run: |
+          python -m kbprep_worker.cli --help
+          python -m unittest discover -s python/tests
 
   dependency-upgrade-test:
     name: Latest compatible Python dependencies
@@ -137,7 +129,7 @@ jobs:
 
       - run: npm run build
 
-      - name: Host-agnostic worker smoke
+      - name: Host-neutral worker smoke
         env:
           PYTHONPATH: python
           KBPREP_SKIP_AUTO_SETUP: "1"

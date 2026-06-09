@@ -13,7 +13,7 @@
 ## Tasks
 
 - [ ] Add a generic AI review backend interface and adapt the OpenClaw subagent to that interface.
-- [ ] Split `diagnose.py` PDF analysis into focused helper functions while preserving output keys.
+- [ ] Split `diagnose/` PDF analysis into focused helper functions while preserving output keys.
 - [ ] Normalize public TypeScript worker error codes to `E_*` while accepting legacy Python compatibility codes.
 - [ ] Rename npm package to `kbprep` and document that `openclaw-kbprep` remains only the OpenClaw adapter/plugin id; local code cannot rename the remote GitHub repository.
 - [ ] Add a CI/package guard for tracked `dist/` so committed runtime output cannot drift from TypeScript source.
@@ -24,7 +24,7 @@
 ## Acceptance
 
 - Existing OpenClaw AI review tests still pass through the new backend adapter.
-- `diagnose.py` has no single monolithic PDF function doing all page counting, text-health, PPT similarity, and routing logic inline.
+- `diagnose/` has no single monolithic PDF function doing all page counting, text-health, PPT similarity, and routing logic inline.
 - TypeScript worker-created errors use `E_*` names; old `KBPREP_*` names remain accepted only for compatibility.
 - Package name is `kbprep`; OpenClaw adapter id remains `openclaw-kbprep` and is documented as adapter identity.
 - CI checks `dist` drift after build.

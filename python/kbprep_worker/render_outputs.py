@@ -8,6 +8,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+OBSIDIAN_PROFILES = {"obsidian_kb", "curated_obsidian_kb"}
+
 
 def render(
     blocks: list[dict],
@@ -16,6 +18,7 @@ def render(
     run_id: str,
     profile: str = "standard",
     source_title: str | None = None,
+    render_obsidian: bool = True,
 ) -> None:
     """
     Render output files from classified blocks.
@@ -81,14 +84,16 @@ def render(
 
     _render_parts(keep_blocks, run_p)
 
-    if profile == "curated_obsidian_kb":
-        from .obsidian_kb import render_obsidian_vault
+    if render_obsidian and profile in OBSIDIAN_PROFILES:
+        from .obsidian_kb import render_obsidian_vault, template_for_profile
         render_obsidian_vault(
             blocks=blocks,
             run_dir=run_dir,
             source_title=source_title or run_p.name,
             source_hash=source_hash,
             run_id=run_id,
+            profile=profile,
+            template_name=template_for_profile(profile),
         )
 
     logger.info("Rendered: cleaned=%d blocks, discarded=%d, evidence=%d, review=%d",

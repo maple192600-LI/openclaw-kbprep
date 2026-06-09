@@ -1,7 +1,7 @@
 {
   "name": "kbprep",
   "version": "0.5.1",
-  "description": "KBPrep source-to-clean-Markdown toolkit with a Python core, standalone CLI, and OpenClaw adapter.",
+  "description": "KBPrep file-to-Obsidian-Markdown quality-loop CLI with a Python worker core.",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -9,53 +9,53 @@
     "kbprep-analyze": "./dist/adapters/standalone/bin/analyze.js",
     "kbprep-prepare": "./dist/adapters/standalone/bin/prepare.js",
     "kbprep-apply-review": "./dist/adapters/standalone/bin/apply-review.js",
+    "kbprep-feedback": "./dist/adapters/standalone/bin/feedback.js",
     "kbprep-cleanup": "./dist/adapters/standalone/bin/cleanup.js",
     "kbprep-batch": "./dist/adapters/standalone/bin/batch.js"
   },
   "scripts": {
-    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
-    "dist:check": "npm run build && git diff --exit-code -- dist",
+    "build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
+    "audit:check": "node scripts/check-audit-remediation.mjs && node scripts/check-thresholds.mjs",
     "docs:serve": "node scripts/serve-docs.mjs",
-    "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
-    "plugin:validate": "npm run build && openclaw plugins validate --entry ./dist/index.js",
     "pack:check": "node scripts/check-pack.mjs",
-    "test": "vitest run --pool=forks --maxWorkers=1 --testTimeout=30000"
+    "python:coverage": "python -m coverage run --source=python/kbprep_worker -m unittest discover -s python/tests && python -m coverage report --fail-under=30",
+    "python:ruff": "python -m ruff check python/kbprep_worker python/tests",
+    "release:check": "node scripts/release-check.mjs",
+    "test": "vitest run --pool=forks --maxWorkers=1 --testTimeout=30000",
+    "vault:smoke": "node scripts/check-vault-smoke.mjs"
   },
   "files": [
     "dist",
     "python/kbprep_worker/**/*.py",
     "python/pyproject.toml",
-    "skills",
-    "docs",
+    "rules/**/*.json",
+    "rules/**/*.jsonl",
+    "skills/kbprep/SKILL.md",
+    "docs/agent-neutral.md",
+    "docs/audit-remediation.md",
+    "docs/capability-matrix.md",
+    "docs/feedback-learning.md",
+    "docs/hardcoded-cleaning-inventory.md",
+    "docs/install/*.md",
+    "docs/known-issues.md",
+    "docs/quality-loop.md",
+    "docs/risk-tags.md",
+    "docs/standalone-cli.md",
     "CHANGELOG.md",
+    "AGENTS.md",
     "LICENSE",
-    "openclaw.plugin.json",
     "README.md",
     "package.json"
   ],
   "engines": {
     "node": ">=22"
   },
-  "peerDependencies": {
-    "openclaw": ">=2026.5.17"
-  },
-  "peerDependenciesMeta": {
-    "openclaw": {
-      "optional": true
-    }
-  },
   "dependencies": {
     "typebox": "^1.1.38"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
-    "openclaw": "^2026.6.1",
     "typescript": "^5.9.0",
     "vitest": "^4.1.8"
-  },
-  "openclaw": {
-    "extensions": [
-      "./dist/index.js"
-    ]
   }
 }

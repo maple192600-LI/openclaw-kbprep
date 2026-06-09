@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KBPrep 项目讲解</title>
+  <style>
+    :root {
+      --ink: #181714;
+      --muted: #686057;
+      --paper: #f6f0e5;
+      --panel: #fffaf0;
+      --line: #d8c8b2;
+      --dark: #25231f;
+      --green: #0f6f5c;
+      --green-soft: #dceee8;
+      --blue: #255d86;
+      --red: #a9402a;
+      --gold: #c18a2b;
+      --shadow: 0 18px 48px rgba(44, 35, 23, .14);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      color: var(--ink);
+      background: var(--paper);
+    }
+
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      line-height: 1.75;
+      background:
+        linear-gradient(90deg, rgba(24,23,20,.04) 1px, transparent 1px) 0 0 / 34px 34px,
+        linear-gradient(rgba(24,23,20,.035) 1px, transparent 1px) 0 0 / 34px 34px,
+        var(--paper);
+    }
+
+    a { color: inherit; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid rgba(37, 35, 31, .14);
+      background: rgba(246, 240, 229, .92);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar-inner {
+      width: min(1180px, calc(100% - 32px));
+      min-height: 58px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+    }
+
+    .mark {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border: 2px solid var(--dark);
+      background: var(--green-soft);
+      box-shadow: 3px 3px 0 var(--dark);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    nav a {
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+    }
+
+    nav a:hover {
+      color: var(--ink);
+      border-color: var(--ink);
+    }
+
+    .hero {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      min-height: 620px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, .82fr);
+      gap: 42px;
+      align-items: center;
+      padding: 64px 0 44px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 10px;
+      border: 1px solid var(--dark);
+      background: var(--panel);
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      box-shadow: 3px 3px 0 rgba(37,35,31,.24);
+    }
+
+    h1 {
+      margin: 22px 0 0;
+      max-width: 860px;
+      font-size: clamp(42px, 7vw, 84px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 780px;
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: 21px;
+    }
+
+    .hero-card {
+      border: 2px solid var(--dark);
+      background: var(--panel);
+      box-shadow: 12px 12px 0 rgba(37,35,31,.16);
+      overflow: hidden;
+    }
+
+    .hero-card img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      border-bottom: 2px solid var(--dark);
+      background: #ede3d2;
+    }
+
+    .hero-card .caption {
+      padding: 18px 20px 20px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .section {
+      padding: 54px 0;
+      border-top: 1px solid rgba(37,35,31,.12);
+    }
+
+    .section-inner {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .section-head {
+      max-width: 820px;
+      margin-bottom: 24px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 46px);
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+
+    .section-head p {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: rgba(255,250,240,.84);
+      padding: 22px;
+      border-radius: var(--radius);
+      box-shadow: 0 10px 30px rgba(44, 35, 23, .07);
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 21px;
+    }
+
+    .card p,
+    .card li {
+      color: var(--muted);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 0 9px;
+      margin-bottom: 12px;
+      border: 1px solid var(--dark);
+      background: var(--green-soft);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .flow {
+      display: grid;
+      gap: 12px;
+      counter-reset: step;
+    }
+
+    .flow-item {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: 76px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+      padding: 20px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: var(--radius);
+    }
+
+    .flow-item::before {
+      content: counter(step, decimal-leading-zero);
+      display: grid;
+      place-items: center;
+      width: 52px;
+      height: 52px;
+      border: 2px solid var(--dark);
+      background: var(--dark);
+      color: var(--panel);
+      font-family: Consolas, "Courier New", monospace;
+      font-weight: 700;
+    }
+
+    .flow-item h3 {
+      margin: 0 0 6px;
+      font-size: 22px;
+    }
+
+    .flow-item p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: var(--radius);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 880px;
+    }
+
+    th,
+    td {
+      padding: 14px 16px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      background: #eadfcb;
+      font-size: 14px;
+    }
+
+    td {
+      color: var(--muted);
+    }
+
+    .status {
+      display: inline-block;
+      padding: 2px 8px;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .ok { color: var(--green); }
+    .partial { color: var(--blue); }
+    .no { color: var(--red); }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    pre {
+      margin: 0;
+      padding: 18px;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      background: #201f1b;
+      color: #f6f0e5;
+      border-radius: var(--radius);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    code {
+      font-family: Consolas, "Courier New", monospace;
+    }
+
+    .warning {
+      border-left: 6px solid var(--gold);
+      background: #fff4d9;
+    }
+
+    .danger {
+      border-left: 6px solid var(--red);
+      background: #fff0ea;
+    }
+
+    footer {
+      padding: 34px 0 48px;
+      border-top: 1px solid rgba(37,35,31,.12);
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 860px) {
+      .topbar-inner,
+      .hero,
+      .section-inner {
+        width: min(100% - 24px, 1180px);
+      }
+
+      .hero,
+      .grid,
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        min-height: auto;
+        padding-top: 36px;
+      }
+
+      nav {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand"><span class="mark">KB</span><span>KBPrep 项目讲解</span></div>
+      <nav aria-label="页面导航">
+        <a href="#what">是什么</a>
+        <a href="#design">怎么设计</a>
+        <a href="#flow">怎么工作</a>
+        <a href="#ability">能力边界</a>
+        <a href="#release">发布验收</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <div class="eyebrow">local CLI · Python worker · Obsidian Markdown</div>
+        <h1>把乱资料变成可检查的知识库材料</h1>
+        <p class="lead">KBPrep 的核心目标很简单：你给它一个本地文件，它先判断文件类型，再转换成 Markdown，再检查有没有漏正文、漏图片、漏表格、误删案例，最后才允许发布成 Obsidian 或普通 Markdown。</p>
+      </div>
+      <aside class="hero-card">
+        <img src="showcase-preview.png" alt="KBPrep 输出预览">
+        <div class="caption">这不是聊天机器人，也不是 RAG 系统。它是一条本地文件清洗流水线，负责把资料整理到“能进知识库”的状态。</div>
+      </aside>
+    </section>
+
+    <section id="what" class="section">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>一、这个项目到底是什么</h2>
+          <p>用大白话说，KBPrep 是一个本地命令行工具，专门把 PDF、Word、PPT、网页、字幕、Markdown、EPUB、代码文件这些资料，转换成干净、可追溯、适合 Obsidian 或大模型知识库使用的 Markdown。</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <span class="tag">不是做什么</span>
+            <h3>它不是平台插件仓库</h3>
+            <p>当前方向是 host-neutral，也就是不把 Claude Code、Codex、OpenClaw、Hermes 这些宿主的业务逻辑写进核心项目。不同宿主要用它，就调用 CLI。</p>
+          </article>
+          <article class="card">
+            <span class="tag">真正做什么</span>
+            <h3>它做文件到 Markdown 的质量闭环</h3>
+            <p>不是“转一下就完事”，而是转换、清洗、检查、记录证据、失败时阻止发布。</p>
+          </article>
+          <article class="card">
+            <span class="tag">给谁用</span>
+            <h3>给本地知识库整理流程用</h3>
+            <p>特别适合把课程资料、报告、电子书、网页保存件、会议字幕、财务资料、代码说明整理成可长期维护的知识材料。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="design" class="section">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>二、它是怎么设计的</h2>
+          <p>项目分成三层：Node/TypeScript 负责命令入口和打包，Python worker 负责真实转换和质量判断，rules 负责可维护的清洗规则。</p>
+        </div>
+        <div class="two-col">
+          <article class="card">
+            <h3>TypeScript 层</h3>
+            <p>主要在 <code>src/</code>。它提供 CLI 命令、运行 Python worker、处理超时、打包成 npm 可执行命令。</p>
+            <pre><code>kbprep-analyze
+kbprep-prepare
+kbprep-apply-review
+kbprep-feedback
+kbprep-cleanup
+kbprep-batch</code></pre>
+          </article>
+          <article class="card">
+            <h3>Python worker 层</h3>
+            <p>主要在 <code>python/kbprep_worker/</code>。它负责格式诊断、转换、切块、清洗、质量门禁、Obsidian 输出、反馈学习。</p>
+            <pre><code>diagnose/
+converters/
+quality/
+feedback/
+obsidian_kb/
+stages/pipeline_core.py</code></pre>
+          </article>
+          <article class="card">
+            <h3>规则层</h3>
+            <p>主要在 <code>rules/</code>。清洗知识放在 JSON 规则里，而不是写死在 Python 代码里。这样后续要改“什么算广告、什么该保留”，不用到处改代码。</p>
+          </article>
+          <article class="card">
+            <h3>文档和门禁层</h3>
+            <p><code>docs/</code> 说明能力边界，<code>scripts/</code> 放发布检查脚本，<code>src/test/</code> 和 <code>python/tests/</code> 放测试。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="flow" class="section">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>三、它怎么工作</h2>
+          <p>一份文件从进入 KBPrep 到最终输出，大致会经历下面这些步骤。</p>
+        </div>
+        <div class="flow">
+          <article class="flow-item">
+            <div>
+              <h3>先诊断文件</h3>
+              <p>判断是 Markdown、PDF、Office、EPUB、HTML、字幕、代码，还是当前不支持的媒体文件。PDF 还会继续判断：文字层好不好、是不是扫描件、是否需要 OCR。</p>
+            </div>
+          </article>
+          <article class="flow-item">
+            <div>
+              <h3>选择转换路线</h3>
+              <p>普通文本直接转，Office XML 本地解析，EPUB 解析 XHTML，PDF 根据诊断结果走文字层或 MinerU/OCR。</p>
+            </div>
+          </article>
+          <article class="flow-item">
+            <div>
+              <h3>转换成中间 Markdown</h3>
+              <p>生成 <code>converted.md</code>，并尽量保留标题、段落、表格、代码、链接、图片引用、页码证据。</p>
+            </div>
+          </article>
+          <article class="flow-item">
+            <div>
+              <h3>切成可追踪的块</h3>
+              <p>生成 <code>blocks.jsonl</code>。每一块都带来源信息，方便后续知道“这段话从哪里来、为什么被删、删得对不对”。</p>
+            </div>
+          </article>
+          <article class="flow-item">
+            <div>
+              <h3>按规则清洗</h3>
+              <p>删除广告、二维码、扫码入群、页眉页脚、重复口播、无关包装内容；同时保护教程步骤、参数、链接、代码、表格、案例细节。</p>
+            </div>
+          </article>
+          <article class="flow-item">
+            <div>
+              <h3>跑质量门禁</h3>
+              <p>如果发现图片缺失、正文细节被误删、表格丢了、代码块坏了、污染内容还残留，就不发布最终文件，只留下诊断材料。</p>
+            </div>
+          </article>
+          <article class="flow-item">
+            <div>
+              <h3>通过后才发布</h3>
+              <p>普通模式发布源文件旁边的 Markdown；Obsidian 模式发布一个 Obsidian 文件夹。失败时不会更新 <code>latest.json</code>，避免把坏结果当成最新成果。</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="ability" class="section">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>四、它有哪些能力和效果</h2>
+          <p>这里按当前能力矩阵讲，不能夸大。verified 是已经比较稳，partial 是能处理但不承诺复杂场景全覆盖，unsupported 是明确不支持。</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>资料类型</th>
+                <th>当前状态</th>
+                <th>怎么处理</th>
+                <th>效果</th>
+                <th>风险边界</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Markdown / TXT / CSV / TSV</td>
+                <td><span class="status ok">verified</span></td>
+                <td>直接读取文本和 Markdown 结构</td>
+                <td>保留标题、段落、表格、链接、代码细节</td>
+                <td>清洗规则太宽时仍可能误删，所以有质量门禁</td>
+              </tr>
+              <tr>
+                <td>代码 / 配置文件</td>
+                <td><span class="status ok">verified</span></td>
+                <td>包进 Markdown 代码块</td>
+                <td>不总结代码，保留参数、注释、URL、命令</td>
+                <td>代码不能按普通文章清洗</td>
+              </tr>
+              <tr>
+                <td>字幕 / transcript</td>
+                <td><span class="status ok">verified</span></td>
+                <td>转成可读 transcript</td>
+                <td>保留语序，清理明显口水和时间戳噪声</td>
+                <td>字幕噪声还需要按文档类型继续优化</td>
+              </tr>
+              <tr>
+                <td>HTML / 本地网页</td>
+                <td><span class="status partial">partial</span></td>
+                <td>提取可见文字、标题、列表、链接、图片引用</td>
+                <td>能把保存网页变成可读 Markdown</td>
+                <td>导航栏、页脚、广告壳需要规则继续清</td>
+              </tr>
+              <tr>
+                <td>DOCX / PPTX / XLSX</td>
+                <td><span class="status partial">partial</span></td>
+                <td>解析 Office XML</td>
+                <td>保留文本、幻灯片顺序、表格、部分图片</td>
+                <td>复杂版式、图表、复杂表格还不能保证完整</td>
+              </tr>
+              <tr>
+                <td>EPUB</td>
+                <td><span class="status partial">partial</span></td>
+                <td>解析 XHTML 和 spine 顺序</td>
+                <td>适合电子书章节转 Markdown</td>
+                <td>脚注、复杂表格、自定义 XHTML 还需要更多样本</td>
+              </tr>
+              <tr>
+                <td>PDF</td>
+                <td><span class="status partial">partial</span></td>
+                <td>先诊断文字层；可信则直接提取，不可信则走 OCR</td>
+                <td>文本型 PDF 快，扫描件可保留 OCR 路线证据</td>
+                <td>复杂排版、坏文字层、扫描质量差时必须看质量报告</td>
+              </tr>
+              <tr>
+                <td>图片 / 音视频 / 旧 Office / MOBI</td>
+                <td><span class="status no">unsupported</span></td>
+                <td>不假装支持</td>
+                <td>会明确告诉你需要外部转换或先转 transcript</td>
+                <td>不能宣传成 v1 已支持</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>五、输出文件怎么看</h2>
+          <p>KBPrep 的重点是“能追责”。不是只给你一个 cleaned.md 就完事。</p>
+        </div>
+        <div class="grid">
+          <article class="card">
+            <h3><code>cleaned.md</code></h3>
+            <p>清洗后的正文过程文件。能读，但不能单独作为验收依据。</p>
+          </article>
+          <article class="card">
+            <h3><code>discarded.md</code></h3>
+            <p>被删除的内容。要检查这里有没有误删正文、案例、方法、参数。</p>
+          </article>
+          <article class="card">
+            <h3><code>review_needed.md</code></h3>
+            <p>系统不敢自动决定的内容。发布前应该人工看一眼。</p>
+          </article>
+          <article class="card">
+            <h3><code>quality_report.json</code></h3>
+            <p>质量门禁结果。strict error 不为空，就不能当作最终结果。</p>
+          </article>
+          <article class="card">
+            <h3><code>conversion_report.json</code></h3>
+            <p>记录实际转换路线，尤其 PDF 是否走文字层、是否 fallback 到 OCR。</p>
+          </article>
+          <article class="card">
+            <h3><code>latest.json</code></h3>
+            <p>只有成功发布才应该更新。它告诉你最终可用成果在哪里。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>六、反馈学习怎么防止跑偏</h2>
+          <p>用户说“以后删这种东西”时，KBPrep 不会立刻改规则，而是先生成可审核的规则提案。</p>
+        </div>
+        <div class="two-col">
+          <article class="card">
+            <h3>为什么不能直接学习</h3>
+            <p>因为一句反馈可能太宽，比如“删掉关注公众号”。如果正文是在讲公众号运营方法，这句话就不能删。所以系统会保留例子和反例，要求确认。</p>
+          </article>
+          <article class="card">
+            <h3>正确流程</h3>
+            <pre><code>用户反馈
+生成 proposed_rules.jsonl
+人工确认
+写入 accepted_rules.jsonl
+重新跑原文档验证
+通过后才影响后续清洗</code></pre>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="release" class="section">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>七、怎么判断它能发布</h2>
+          <p>现在项目已经有两个关键门禁：一个检查代码和包，一个拿真实 Obsidian 文档跑烟测。</p>
+        </div>
+        <div class="two-col">
+          <article class="card">
+            <h3>发布总检查</h3>
+            <pre><code>npm run release:check</code></pre>
+            <p>它会跑依赖锁、空白检查、build、dist 同步检查、TypeScript 测试、Python lint、Python coverage、审计脚本、打包检查、npm 安全审计。</p>
+          </article>
+          <article class="card">
+            <h3>真实 Vault 烟测</h3>
+            <pre><code>npm run vault:smoke</code></pre>
+            <p>它从 <code>F:\Obsidian-Vault</code> 复制代表样本到临时目录测试，覆盖 Markdown、PDF、PPTX、DOCX、EPUB、HTML、VTT、TXT、unsupported 媒体和 batch。</p>
+          </article>
+        </div>
+        <div class="card warning" style="margin-top:18px">
+          <h3>重要提醒</h3>
+          <p>真实 Vault 测试必须先复制到临时目录，不能直接对原 Vault 文件跑 <code>kbprep-prepare</code>，因为标准模式会把最终 Markdown 发布到输入文件旁边。</p>
+        </div>
+        <div class="card danger" style="margin-top:18px">
+          <h3>不能吹过头的地方</h3>
+          <p>当前 Python coverage 只是达到 30% 门槛，不是高覆盖。PDF、Office、EPUB 仍是 partial，表示能处理一部分真实场景，但不能承诺所有复杂文件都完美。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="section-inner">
+      <p>本页根据当前仓库的 README、capability matrix、quality loop、feedback learning、CLI 文档和 package/CI 配置整理。它是项目解释页，不替代最新测试结果。</p>
+    </div>
+  </footer>
+</body>
+</html>

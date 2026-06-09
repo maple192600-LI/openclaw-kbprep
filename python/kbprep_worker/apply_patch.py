@@ -13,10 +13,13 @@ import time
 from pathlib import Path
 
 from .envelope import ok, fail
+from .fs_safety import safe_rmtree
 from .prepare_artifacts import publish_latest_outputs as _shared_publish_latest_outputs
 from .quality import _detail_categories, _is_known_pollution_without_detail
 
 logger = logging.getLogger(__name__)
+
+OBSIDIAN_PROFILES = {"obsidian_kb", "curated_obsidian_kb"}
 
 # ── Allowed fields ────────────────────────────────────────────────
 ALLOWED_FIELDS = {"status", "risk_tags", "reason", "confidence"}
@@ -132,7 +135,9 @@ def run(data: dict) -> None:
     from . import render_outputs as render_mod
     source_hash = blocks[0].get("source_sha256", "") if blocks else ""
     run_id = run_p.name
-    profile = "curated_obsidian_kb" if (run_p / "obsidian").exists() else "standard"
+    profile = _profile_from_run_metadata(run_p)
+    if profile == "standard" and (run_p / "obsidian").exists():
+        profile = "obsidian_kb"
     render_mod.render(
         blocks=blocks,
         run_dir=run_dir,
@@ -156,6 +161,12 @@ def run(data: dict) -> None:
         split_strategy=diagnosis.get("split_strategy"),
     )
 
+    review_applied_at = time.time()
+    previous_quality_loop = previous_quality.get("quality_loop") if isinstance(previous_quality.get("quality_loop"), dict) else {}
+    previous_iteration = previous_quality_loop.get("current_iteration", 1)
+    quality_iteration = _positive_int(previous_iteration, 1) + 1
+    max_quality_iterations = _positive_int(previous_quality_loop.get("max_iterations"), 3)
+
     # Re-run quality check
     from . import quality as qa_mod
     quality_report = qa_mod.run_quality_check(
@@ -163,6 +174,11 @@ def run(data: dict) -> None:
         run_dir=run_dir,
         source_type=source_type,
         diagnosis=diagnosis,
+        profile=profile,
+        review_applied_at=review_applied_at,
+        quality_iteration=quality_iteration,
+        previous_quality_iteration=previous_iteration,
+        max_quality_iterations=max_quality_iterations,
     )
     quality_report["source_type"] = source_type
     for key in (
@@ -175,7 +191,6 @@ def run(data: dict) -> None:
     ):
         if key in previous_quality:
             quality_report[key] = previous_quality[key]
-    quality_report["review_applied_at"] = time.time()
     (quality_path).write_text(
         json.dumps(quality_report, indent=2, ensure_ascii=False), encoding="utf-8"
     )
@@ -186,7 +201,7 @@ def run(data: dict) -> None:
         output_root = _find_output_root(run_p)
         if output_root:
             latest_outputs = _publish_latest_outputs(run_p, output_root, profile)
-            _update_latest_json(output_root, run_p, latest_outputs, previous_quality, source_type)
+            _update_latest_json(output_root, run_p, latest_outputs, previous_quality, source_type, review_applied_at)
             published = True
 
     updated_obsidian_complete = _obsidian_complete_path(run_p / "obsidian")
@@ -250,6 +265,32 @@ def _read_diagnosis(run_p: Path) -> dict:
         return {}
 
 
+def _profile_from_run_metadata(run_p: Path) -> str:
+    metadata_path = run_p / "run_metadata.json"
+    if metadata_path.exists():
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            profile = metadata.get("profile")
+            if isinstance(profile, str) and profile.strip():
+                return profile
+            payload = metadata.get("prepare_payload")
+            if isinstance(payload, dict):
+                payload_profile = payload.get("profile")
+                if isinstance(payload_profile, str) and payload_profile.strip():
+                    return payload_profile
+        except Exception:
+            pass
+    return "standard"
+
+
+def _positive_int(value, default: int) -> int:
+    try:
+        parsed = int(value) if value is not None else default
+    except (TypeError, ValueError):
+        parsed = default
+    return max(1, parsed)
+
+
 def _source_title_from_previous_quality(previous_quality: dict, run_p: Path) -> str:
     source_file = previous_quality.get("input_file")
     if isinstance(source_file, str) and source_file.strip():
@@ -311,7 +352,7 @@ def _publish_latest_outputs(run_p: Path, output_root: Path, profile: str = "stan
         elif name == "review_pack.json" and dst.exists():
             dst.unlink()
 
-    source_side_final = profile != "curated_obsidian_kb"
+    source_side_final = profile not in OBSIDIAN_PROFILES
     final_md = (_source_final_markdown_path(input_path) if input_path else output_root / "cleaned.md") if source_side_final else None
     final_assets_dir = (_source_final_assets_dir(input_path) if input_path else output_root / "images") if source_side_final else None
     if input_path and source_side_final:
@@ -320,7 +361,7 @@ def _publish_latest_outputs(run_p: Path, output_root: Path, profile: str = "stan
     src_parts = run_p / "parts"
     dst_parts = output_root / "parts"
     if dst_parts.exists():
-        shutil.rmtree(dst_parts)
+        safe_rmtree(dst_parts, root=output_root)
     if src_parts.exists():
         shutil.copytree(src_parts, dst_parts)
     else:
@@ -329,7 +370,7 @@ def _publish_latest_outputs(run_p: Path, output_root: Path, profile: str = "stan
     src_images = run_p / "images"
     dst_images = output_root / "images"
     if dst_images.exists():
-        shutil.rmtree(dst_images)
+        safe_rmtree(dst_images, root=output_root)
     if src_images.exists():
         shutil.copytree(src_images, dst_images)
     else:
@@ -338,7 +379,7 @@ def _publish_latest_outputs(run_p: Path, output_root: Path, profile: str = "stan
     src_obsidian = run_p / "obsidian"
     dst_obsidian = output_root / "obsidian"
     if dst_obsidian.exists():
-        shutil.rmtree(dst_obsidian)
+        safe_rmtree(dst_obsidian, root=output_root)
     if src_obsidian.exists():
         shutil.copytree(src_obsidian, dst_obsidian)
 
@@ -443,6 +484,7 @@ def _update_latest_json(
     latest_outputs: dict,
     previous_quality: dict,
     source_type: str,
+    review_applied_at: float | int,
 ) -> None:
     latest_path = output_root / "latest.json"
     latest = {}
@@ -457,6 +499,6 @@ def _update_latest_json(
         "source_type": source_type,
         "source_sha256": previous_quality.get("source_sha256", latest.get("source_sha256", "")),
         "latest_outputs": latest_outputs,
-        "review_applied_at": time.time(),
+        "review_applied_at": review_applied_at,
     })
     latest_path.write_text(json.dumps(latest, indent=2, ensure_ascii=False), encoding="utf-8")

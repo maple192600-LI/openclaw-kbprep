@@ -8,12 +8,12 @@ user intentionally keeps it.
 from __future__ import annotations
 
 import json
-import shutil
 import time
 from pathlib import Path
 from typing import Any
 
 from .envelope import fail, ok
+from .fs_safety import safe_rmtree, safe_unlink
 
 
 TOP_LEVEL_FILES = [
@@ -342,9 +342,9 @@ def _delete_path(root: Path, path: Path, deleted: list[str], *, dry_run: bool, p
     if dry_run:
         return
     if path.is_dir():
-        shutil.rmtree(path)
+        safe_rmtree(path, root=root)
     else:
-        path.unlink()
+        safe_unlink(path, root=root)
 
 
 def _has_review_content(path: Path) -> bool:

@@ -1,8 +1,8 @@
 # KBPrep Host Decoupling
 
-KBPrep is a source-to-clean-Markdown project. OpenClaw is a supported adapter and installation route, but the core conversion, cleaning, quality gates, and curated Obsidian output live in the Python worker.
+KBPrep is a source-to-clean-Markdown project. Host agents are packaging routes, not the project boundary. The core conversion, cleaning, quality gates, and Markdown/Obsidian output live in the Python worker.
 
-The npm package is named `kbprep`. The `openclaw-kbprep` id remains the OpenClaw adapter/plugin id and the current GitHub repository slug; renaming the remote repository is an external GitHub operation, not a source-code refactor.
+The npm package is named `kbprep`. Host-specific plugin or skill wrappers should be generated outside the core project from the CLI and `skills/kbprep/SKILL.md`.
 
 ## Current Architecture
 
@@ -11,22 +11,21 @@ KBPrep
 +-- python/kbprep_worker/        core conversion, cleaning, quality gates
 +-- src/runtime/                 Node runtime setup for the Python worker
 +-- src/worker.ts                JSON stdin/stdout worker bridge
-+-- src/adapters/openclaw/       OpenClaw tool registration
 +-- src/adapters/standalone/     standalone CLI argument adapter
 +-- skills/kbprep/               agent usage guide
++-- docs/install/                host packaging instructions
 +-- docs/                        architecture and operating notes
 ```
 
-The root `src/index.ts` is intentionally only a compatibility shim for OpenClaw's existing `dist/index.js` extension entry.
+The root `src/index.ts` exports host-neutral runtime helpers. It must not become a host-specific adapter entry.
 
 ## Adapter Rules
 
 - Python worker code must not import OpenClaw, Codex, Claude Code, Cursor, or any other host SDK.
 - `src/worker.ts` must stay a generic JSON bridge to the Python worker.
 - `src/runtime/` may manage the local KBPrep Python runtime, but it must not assume that the caller is an OpenClaw plugin.
-- `src/adapters/openclaw/` may register OpenClaw tools and read OpenClaw plugin config.
 - `src/adapters/standalone/` may parse command-line flags and print JSON results.
-- Future Codex, Claude Code, Cursor, or MCP support must be thin wrappers around the same worker contract.
+- Future Codex, Claude Code, OpenClaw, Cursor, Hermes, or MCP support must be generated or maintained outside the core worker contract.
 - `C:\Users\Administrator\Documents\Projects\kbprep` is the development checkout. `.openclaw\workspace\openclaw-kbprep` is an OpenClaw install/runtime workspace and must not be treated as the source of truth for development.
 
 ## Python Dependency Installation
@@ -46,8 +45,8 @@ The earlier `feature/decouple-from-openclaw` branch had useful direction but was
 
 The useful parts were retained as design guidance:
 
-- A standalone CLI is a correct entry point.
-- OpenClaw should be optional for non-OpenClaw CLI usage.
+- A standalone CLI is the correct maintained entry point.
+- Host-specific wrappers should stay optional and external to the core project.
 - Project documentation should describe host boundaries and risk tags.
 - AI review backend abstraction can be revisited after the stable local and OpenClaw paths are proven.
 
@@ -58,4 +57,4 @@ This branch reimplements the useful direction from the clean `main` baseline ins
 - Do not rename the GitHub repository from code. If the repository slug changes later, update install URLs and GitHub Pages links in the same release.
 - Do not move the local checkout yet.
 - Do not make MCP the top-level architecture unless a real host needs it.
-- Do not add concrete Codex or Claude Code provider adapters until the standalone CLI and OpenClaw paths are stable. The source-level AI review backend interface is allowed so hosts can plug in their own reviewer without changing classification safety rules.
+- Do not add concrete Codex, Claude Code, OpenClaw, or Hermes provider adapters to the core project. The source-level AI review backend interface is allowed so hosts can plug in their own reviewer without changing classification safety rules.

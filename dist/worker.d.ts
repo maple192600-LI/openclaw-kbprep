@@ -26,3 +26,4 @@ export interface WorkerConfig {
  * stderr: JSONL logs
  */
 export declare function callWorker<T = Record<string, unknown>>(command: string, input: Record<string, unknown>, options: WorkerCallOptions): Promise<WorkerResult<T>>;
+export declare function parseEnvelope<T>(raw: string, stderrTail: string[], command?: string): WorkerResult<T>;

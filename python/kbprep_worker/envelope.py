@@ -9,6 +9,10 @@ import sys
 from typing import Any
 
 
+class EnvelopeExit(SystemExit):
+    """Controlled process exit after writing a worker JSON envelope."""
+
+
 def ok(data: dict[str, Any] | None = None, metrics: dict[str, Any] | None = None, warnings: list[str] | None = None) -> dict:
     """Write a success envelope to stdout."""
     envelope: dict[str, Any] = {
@@ -19,8 +23,7 @@ def ok(data: dict[str, Any] | None = None, metrics: dict[str, Any] | None = None
     }
     sys.stdout.write(json.dumps(envelope, ensure_ascii=False))
     sys.stdout.flush()
-    sys.exit(0)
-    return envelope
+    raise EnvelopeExit(0)
 
 
 def fail(
@@ -46,5 +49,4 @@ def fail(
     }
     sys.stdout.write(json.dumps(envelope, ensure_ascii=False))
     sys.stdout.flush()
-    sys.exit(1)
-    return envelope
+    raise EnvelopeExit(1)

@@ -121,7 +121,7 @@ function resolveAiReviewBackend(context, params, config) {
     const name = resolveBackendName(params.ai_review_backend ?? config.ai_review_backend);
     return buildBackend(name, {
         explicit: context.api.runtime?.aiReviewBackend,
-        openclawSubagent: context.api.runtime?.subagent,
+        externalCommand: params.ai_review_command ?? config.ai_review_command,
     });
 }
 function withAiWarning(result, warning) {

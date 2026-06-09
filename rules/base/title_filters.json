@@ -1,0 +1,27 @@
+{
+  "schema": "kbprep.title_filters.v1",
+  "description": "Source/title packaging terms that should not become the rendered document title.",
+  "split_patterns": [
+    "Anthropic",
+    "Claude",
+    "Building an",
+    "花叔",
+    "译",
+    "横版",
+    "中文译本",
+    "仅供",
+    "内部研究"
+  ],
+  "reject_patterns": [
+    "Anthropic",
+    "Claude",
+    "译",
+    "中文译本",
+    "仅供",
+    "内部研究",
+    "公众号",
+    "小红书",
+    "YouTube",
+    "B站"
+  ]
+}

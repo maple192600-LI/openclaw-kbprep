@@ -1061,12 +1061,12 @@
                 <td>当前最大业务核心，也已经被 known issues 标记需要拆小。</td>
               </tr>
               <tr>
-                <td><code>python/kbprep_worker/obsidian_kb.py</code></td>
-                <td>默认知识库策展层：去作者/营销/包装，保留知识正文。</td>
-                <td>这是“知识库不是营销稿”的核心实现。</td>
+                <td><code>python/kbprep_worker/obsidian_kb/</code></td>
+                <td>默认知识库策展包：policy/signals/context/rendering 分层去作者/营销/包装，保留知识正文。</td>
+                <td>这是“知识库不是营销稿”的核心实现，入口只保留兼容导出。</td>
               </tr>
               <tr>
-                <td><code>python/kbprep_worker/quality.py</code></td>
+                <td><code>python/kbprep_worker/quality/</code></td>
                 <td>质量门：转换质量、清洗质量、细节保留、输出保留、图片引用。</td>
                 <td>防止假闭环，不能只靠肉眼看 cleaned.md。</td>
               </tr>
@@ -1444,8 +1444,8 @@
           <li><code>python/kbprep_worker/prepare_artifacts.py</code>：latest outputs 和 final_md / obsidian_dir 规则。</li>
           <li><code>python/kbprep_worker/cleanup.py</code>：finalize、expired、all。</li>
           <li><code>python/kbprep_worker/prepare_batch.py</code>：sample-first 批量流程。</li>
-          <li><code>python/kbprep_worker/obsidian_kb.py</code>：知识库策展规则。</li>
-          <li><code>python/kbprep_worker/quality.py</code>：质量门。</li>
+          <li><code>python/kbprep_worker/obsidian_kb/</code>：知识库策展规则、模板上下文和 Obsidian vault 渲染。</li>
+          <li><code>python/kbprep_worker/quality/</code>：质量门。</li>
           <li><code>docs/known-issues.md</code>：剩余 open issues。</li>
           <li>验证命令：<code>npm test</code>、<code>plugin:validate</code>、<code>pack:check</code>、runtime inspect。</li>
         </ul>

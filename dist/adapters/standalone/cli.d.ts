@@ -1,4 +1,4 @@
-export type StandaloneCommand = "preflight" | "diagnose" | "prepare" | "apply_review" | "cleanup" | "prepare_batch";
+export type StandaloneCommand = "preflight" | "diagnose" | "prepare" | "apply_review" | "feedback" | "cleanup" | "prepare_batch";
 type ParsedArgs = {
     help: boolean;
     options: Record<string, string | boolean>;

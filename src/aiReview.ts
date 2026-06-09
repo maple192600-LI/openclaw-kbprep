@@ -3,7 +3,6 @@ import {
   buildBackend,
   resolveBackendName,
   type AIReviewBackend,
-  type OpenClawSubagentRuntime,
 } from "./adapters/ai_review/index.js";
 import {
   AI_REVIEW_MAX_ATTEMPTS as PIPELINE_AI_REVIEW_MAX_ATTEMPTS,
@@ -17,9 +16,10 @@ import {
 import { callWorker, type WorkerResult } from "./worker.js";
 
 type PluginConfig = {
-  ai_review_backend?: "openclaw" | "local_rules" | "claude_code" | "codex";
+  ai_review_backend?: "external" | "local_rules";
   ai_review_provider?: string;
   ai_review_model?: string;
+  ai_review_command?: string;
   device_override?: "cuda" | "cpu";
   max_cpu_threads?: number;
   min_free_memory_gb?: number;
@@ -27,16 +27,16 @@ type PluginConfig = {
 
 type AiReviewParams = {
   mode?: "rules_only" | "rules_plus_review_pack" | "ai_review";
-  ai_review_backend?: "openclaw" | "local_rules" | "claude_code" | "codex";
+  ai_review_backend?: "external" | "local_rules";
   ai_review_provider?: string;
   ai_review_model?: string;
+  ai_review_command?: string;
 };
 
 type AiReviewContext = {
   api: {
     runtime?: {
       aiReviewBackend?: AIReviewBackend;
-      subagent?: OpenClawSubagentRuntime;
     };
   };
   toolCallId: string;
@@ -183,7 +183,7 @@ function resolveAiReviewBackend(context: AiReviewContext, params: AiReviewParams
   const name = resolveBackendName(params.ai_review_backend ?? config.ai_review_backend);
   return buildBackend(name, {
     explicit: context.api.runtime?.aiReviewBackend,
-    openclawSubagent: context.api.runtime?.subagent,
+    externalCommand: params.ai_review_command ?? config.ai_review_command,
   });
 }
 
