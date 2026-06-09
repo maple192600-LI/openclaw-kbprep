@@ -1,12 +1,21 @@
-import { mkdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
+import { parse, relative, resolve } from "node:path";
 import { callWorker } from "../../worker.js";
 import { ensurePythonRuntime } from "../../runtime/pythonRuntime.js";
+const MAX_PATCH_JSON_BYTES = 1_000_000;
+const MAX_CONFIG_JSON_BYTES = 64_000;
+const RUNTIME_CONFIG_KEYS = new Set([
+    "device_override",
+    "max_cpu_threads",
+    "min_free_memory_gb",
+    "mineru_timeout_seconds",
+    "python_path",
+]);
 const HELP = {
     preflight: [
         "Usage: kbprep-preflight [--workdir <dir>] [--profile lite|standard] [--config-file <file>]",
         "",
-        "Checks KBPrep runtime readiness without requiring OpenClaw. Omit device_override to let KBPrep choose CPU/GPU automatically.",
+        "Checks KBPrep runtime readiness. Omit device_override to let KBPrep choose CPU/GPU automatically.",
     ].join("\n"),
     diagnose: [
         "Usage: kbprep-analyze --input <file> [--output <dir>] [--source-type auto|pdf_like|markdown_note|generic_block|subtitle_transcript] [--config-file <file>]",
@@ -14,14 +23,25 @@ const HELP = {
         "Reads one source file and reports source type, quality, and recommended processing route.",
     ].join("\n"),
     prepare: [
-        "Usage: kbprep-prepare --input <file> --output <dir> [--profile lite|standard|curated_obsidian_kb] [--mode rules_only|rules_plus_review_pack] [--force] [--config-file <file>]",
+        "Usage: kbprep-prepare --input <file> --output <dir> [--profile lite|standard|obsidian_kb|curated_obsidian_kb] [--mode rules_only|rules_plus_review_pack] [--source-url <url>] [--source-domain <domain>] [--site-name <name>] [--max-quality-iterations <n>] [--force] [--config-file <file>]",
         "",
-        "Converts one local source file. Default profile curated_obsidian_kb publishes an Obsidian deliverable; standard publishes source-side Markdown.",
+        "Converts one local source file. Default profile standard publishes source-side Markdown; obsidian_kb publishes a generic Obsidian vault; curated_obsidian_kb is an explicit legacy course/self-media template.",
     ].join("\n"),
     apply_review: [
         "Usage: kbprep-apply-review --run-dir <dir> --patch-file <json> [--config-file <file>]",
         "",
         "Applies a safe review JSON Patch to an existing KBPrep run.",
+    ].join("\n"),
+    feedback: [
+        "Usage: kbprep-feedback --run-dir <dir> (--feedback-text <text>|--feedback-file <file>) [--action discard|review|protect] [--scope user|project|document_type|source_pattern|global] [--source-pattern <text>] [--rules-dir <dir>] [--config-file <file>]",
+        "       kbprep-feedback --accept-proposal <id|latest> [--rerun-after-accept] [--rules-dir <dir>] [--config-file <file>]",
+        "       kbprep-feedback --reject-proposal <id|latest> [--reject-reason <text>] [--rules-dir <dir>] [--config-file <file>]",
+        "       kbprep-feedback --suggest-dictionary-updates [--min-feedback-count <n>] [--rules-dir <dir>] [--config-file <file>]",
+        "       kbprep-feedback --promote-dictionary-suggestion --document-type <type> --confirm-dictionary-update [--rerun-after-promotion] [--allow-failed-promotion-history] [--representative-run-dir <dir>] [--rules-dir <dir>] [--target-rules-dir <dir>] [--config-file <file>]",
+        "       kbprep-feedback --summarize-promotion-history [--document-type <type>] [--target-rules-dir <dir>] [--promotion-history-file <file>] [--config-file <file>]",
+        "       kbprep-feedback --resolve-promotion-failures --document-type <type> --confirm-failure-resolved --representative-run-dir <dir> [--target-rules-dir <dir>] [--config-file <file>]",
+        "",
+        "Records user cleanup feedback as a reviewable rule proposal. Accepted proposals become user cleaning rules; rejected proposals are remembered but inactive. Dictionary suggestions are review-only and never mutate packaged rules directly.",
     ].join("\n"),
     cleanup: [
         "Usage: kbprep-cleanup --output <dir> [--action finalize|expired|all] [--older-than-days <n>] [--dry-run] [--config-file <file>]",
@@ -29,9 +49,9 @@ const HELP = {
         "Cleans intermediate KBPrep artifacts while preserving the profile-specific final deliverable.",
     ].join("\n"),
     prepare_batch: [
-        "Usage: kbprep-batch --input <dir> --output <dir> [--profile lite|standard|curated_obsidian_kb] [--mode rules_only|rules_plus_review_pack] [--convert-jobs <n>] [--config-file <file>]",
+        "Usage: kbprep-batch --input <dir> --output <dir> [--profile lite|standard|obsidian_kb|curated_obsidian_kb] [--mode rules_only|rules_plus_review_pack] [--max-quality-iterations <n>] [--convert-jobs <n>] [--config-file <file>]",
         "",
-        "Processes a directory through the same Python worker used by the OpenClaw adapter.",
+        "Processes a directory through the same host-neutral Python worker used by all callers.",
     ].join("\n"),
 };
 export function parseStandaloneArgs(argv) {
@@ -63,7 +83,7 @@ export function parseStandaloneArgs(argv) {
 export function buildCliPlan(command, options) {
     switch (command) {
         case "preflight": {
-            const workspacePath = resolvePath(readString(options, "workdir") ?? process.cwd());
+            const workspacePath = resolveOutputDir(readString(options, "workdir") ?? process.cwd(), "workdir");
             mkdirSync(workspacePath, { recursive: true });
             return {
                 command,
@@ -76,12 +96,12 @@ export function buildCliPlan(command, options) {
             };
         }
         case "diagnose": {
-            const outputRoot = resolvePath(readString(options, "output") ?? ".kbprep/analyze");
+            const outputRoot = resolveOutputDir(readString(options, "output") ?? ".kbprep/analyze", "output");
             mkdirSync(outputRoot, { recursive: true });
             return {
                 command,
                 input: {
-                    input_path: requirePath(options, "input"),
+                    input_path: requireInputFile(options, "input"),
                     output_root: outputRoot,
                     source_type: readString(options, "source_type") ?? "auto",
                 },
@@ -89,20 +109,24 @@ export function buildCliPlan(command, options) {
             };
         }
         case "prepare": {
-            const outputRoot = requirePath(options, "output");
+            const outputRoot = requireOutputDir(options, "output");
             mkdirSync(outputRoot, { recursive: true });
             return {
                 command,
                 input: {
-                    input_path: requirePath(options, "input"),
+                    input_path: requireInputFile(options, "input"),
                     output_root: outputRoot,
-                    profile: readString(options, "profile") ?? "curated_obsidian_kb",
+                    profile: readString(options, "profile") ?? "standard",
                     mode: readString(options, "mode") ?? "rules_only",
                     force: readBoolean(options, "force", false),
                     artifact_policy: readString(options, "artifact_policy") ?? "keep_latest",
                     language: readString(options, "language") ?? "zh",
                     source_type: readString(options, "source_type") ?? "auto",
+                    source_url: readString(options, "source_url"),
+                    source_domain: readString(options, "source_domain"),
+                    site_name: readString(options, "site_name"),
                     splitter: readString(options, "splitter") ?? "auto",
+                    max_quality_iterations: readNumber(options, "max_quality_iterations", 3),
                 },
                 cwd: outputRoot,
                 timeoutMs: 5_400_000,
@@ -117,12 +141,47 @@ export function buildCliPlan(command, options) {
                 },
                 timeoutMs: 120_000,
             };
+        case "feedback":
+            return {
+                command,
+                input: {
+                    run_dir: isRunDirOptionalFeedback(options) ? undefined : requirePath(options, "run_dir"),
+                    feedback_text: readString(options, "feedback_text"),
+                    feedback_file: readOptionalFilePath(options, "feedback_file"),
+                    accept_proposal: readString(options, "accept_proposal"),
+                    rerun_after_accept: readBoolean(options, "rerun_after_accept", false),
+                    reject_proposal: readString(options, "reject_proposal"),
+                    reject_reason: readString(options, "reject_reason"),
+                    suggest_dictionary_updates: readBoolean(options, "suggest_dictionary_updates", false),
+                    min_feedback_count: readNumber(options, "min_feedback_count", undefined),
+                    promote_dictionary_suggestion: readBoolean(options, "promote_dictionary_suggestion", false),
+                    confirm_dictionary_update: readBoolean(options, "confirm_dictionary_update", false),
+                    rerun_after_promotion: readBoolean(options, "rerun_after_promotion", false),
+                    allow_failed_promotion_history: readBoolean(options, "allow_failed_promotion_history", false),
+                    representative_run_dirs: readOptionalPathList(options, "representative_run_dir"),
+                    summarize_promotion_history: readBoolean(options, "summarize_promotion_history", false),
+                    promotion_history_file: readOptionalPath(options, "promotion_history_file"),
+                    resolve_promotion_failures: readBoolean(options, "resolve_promotion_failures", false),
+                    confirm_failure_resolved: readBoolean(options, "confirm_failure_resolved", false),
+                    target_rules_dir: readOptionalPath(options, "target_rules_dir"),
+                    suggestions_file: readOptionalPath(options, "suggestions_file"),
+                    action: readString(options, "action"),
+                    scope: readString(options, "scope") ?? "user",
+                    source_pattern: readString(options, "source_pattern"),
+                    document_type: readString(options, "document_type"),
+                    pattern: readString(options, "pattern"),
+                    match: readString(options, "match") ?? "literal",
+                    reason: readString(options, "reason"),
+                    rules_dir: readOptionalPath(options, "rules_dir"),
+                },
+                timeoutMs: 120_000,
+            };
         case "cleanup":
             const cleanupDryRun = readBoolean(options, "dry_run", false);
             return {
                 command,
                 input: {
-                    output_root: requirePath(options, "output"),
+                    output_root: requireCleanupOutput(options, "output"),
                     action: readString(options, "action") ?? (cleanupDryRun ? "all" : "finalize"),
                     older_than_days: readNumber(options, "older_than_days", 7),
                     confirm_review_needed: readBoolean(options, "confirm_review_needed", false),
@@ -131,19 +190,20 @@ export function buildCliPlan(command, options) {
                 timeoutMs: 120_000,
             };
         case "prepare_batch": {
-            const outputRoot = requirePath(options, "output");
+            const outputRoot = requireOutputDir(options, "output");
             mkdirSync(outputRoot, { recursive: true });
             return {
                 command,
                 input: {
-                    input_dir: requirePath(options, "input"),
+                    input_dir: requireInputDir(options, "input"),
                     output_root: outputRoot,
-                    profile: readString(options, "profile") ?? "curated_obsidian_kb",
+                    profile: readString(options, "profile") ?? "standard",
                     mode: readString(options, "mode") ?? "rules_only",
                     force: readBoolean(options, "force", false),
                     artifact_policy: readString(options, "artifact_policy") ?? "keep_latest",
                     language: readString(options, "language") ?? "zh",
                     convert_jobs: readNumber(options, "convert_jobs", 1),
+                    max_quality_iterations: readNumber(options, "max_quality_iterations", 3),
                 },
                 cwd: outputRoot,
                 timeoutMs: 10_800_000,
@@ -190,8 +250,9 @@ export async function main(command, argv = process.argv.slice(2)) {
 function readRuntimeConfig(options) {
     const configPath = readString(options, "config_file");
     const fileConfig = configPath
-        ? JSON.parse(readFileSync(resolvePath(configPath), "utf-8"))
+        ? readJsonObjectFile(resolvePath(configPath), "config file", MAX_CONFIG_JSON_BYTES)
         : {};
+    validateRuntimeConfig(fileConfig);
     return {
         device_override: readDeviceOverride(options, fileConfig),
         max_cpu_threads: readNumber(options, "max_cpu_threads", readOptionalNumber(fileConfig.max_cpu_threads)),
@@ -220,8 +281,38 @@ function readPatchJson(options) {
         return JSON.parse(inline);
     const patchFile = readString(options, "patch_file");
     if (patchFile)
-        return JSON.parse(readFileSync(resolvePath(patchFile), "utf-8"));
+        return readJsonFile(resolvePath(patchFile), "patch file", MAX_PATCH_JSON_BYTES);
     throw new Error("--patch-file or --patch-json is required.");
+}
+function readJsonObjectFile(filePath, label, maxBytes) {
+    const payload = readJsonFile(filePath, label, maxBytes);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw new Error(`${label} must contain a JSON object.`);
+    }
+    return payload;
+}
+function readJsonFile(filePath, label, maxBytes) {
+    const stats = statSync(filePath);
+    if (!stats.isFile())
+        throw new Error(`${label} is not a file: ${filePath}`);
+    if (stats.size > maxBytes) {
+        throw new Error(`${label} is too large: ${stats.size} bytes exceeds ${maxBytes} bytes.`);
+    }
+    return JSON.parse(readFileSync(filePath, "utf-8"));
+}
+function validateRuntimeConfig(config) {
+    for (const key of Object.keys(config)) {
+        if (!RUNTIME_CONFIG_KEYS.has(key))
+            throw new Error(`Unknown config key: ${key}`);
+    }
+}
+function isRunDirOptionalFeedback(options) {
+    return Boolean(readString(options, "accept_proposal")
+        || readString(options, "reject_proposal")
+        || readBoolean(options, "suggest_dictionary_updates", false)
+        || readBoolean(options, "promote_dictionary_suggestion", false)
+        || readBoolean(options, "summarize_promotion_history", false)
+        || readBoolean(options, "resolve_promotion_failures", false));
 }
 function readDeviceOverride(options, fileConfig) {
     const raw = readString(options, "device_override") ?? readOptionalString(fileConfig.device_override);
@@ -237,10 +328,78 @@ function requirePath(options, key) {
     const value = readString(options, key);
     if (!value)
         throw new Error(`--${key.replace(/_/g, "-")} is required.`);
-    return resolvePath(value);
+    return resolveBoundedPath(value, key);
+}
+function requireInputFile(options, key) {
+    const value = readString(options, key);
+    if (!value)
+        throw new Error(`--${key.replace(/_/g, "-")} is required.`);
+    const filePath = resolvePath(value);
+    const stats = statSync(filePath);
+    if (!stats.isFile())
+        throw new Error(`--${key.replace(/_/g, "-")} must be a file: ${filePath}`);
+    return filePath;
+}
+function requireInputDir(options, key) {
+    const value = readString(options, key);
+    if (!value)
+        throw new Error(`--${key.replace(/_/g, "-")} is required.`);
+    const dirPath = resolvePath(value);
+    const stats = statSync(dirPath);
+    if (!stats.isDirectory())
+        throw new Error(`--${key.replace(/_/g, "-")} must be a directory: ${dirPath}`);
+    return dirPath;
+}
+function requireOutputDir(options, key) {
+    const value = readString(options, key);
+    if (!value)
+        throw new Error(`--${key.replace(/_/g, "-")} is required.`);
+    return resolveOutputDir(value, key);
+}
+function requireCleanupOutput(options, key) {
+    return requireOutputDir(options, key);
+}
+function resolveOutputDir(value, label) {
+    const outputPath = resolveBoundedPath(value, label);
+    rejectDangerousOutputRoot(outputPath, label);
+    return outputPath;
+}
+function rejectDangerousOutputRoot(outputPath, label) {
+    const parsed = parse(outputPath);
+    if (outputPath === parsed.root) {
+        throw new Error(`--${label.replace(/_/g, "-")} cannot point at a filesystem root: ${outputPath}`);
+    }
+}
+function readOptionalPath(options, key) {
+    const value = readString(options, key);
+    return value ? resolvePath(value) : undefined;
+}
+function readOptionalFilePath(options, key) {
+    const filePath = readOptionalPath(options, key);
+    if (!filePath)
+        return undefined;
+    const stats = statSync(filePath);
+    if (!stats.isFile())
+        throw new Error(`${key} must be a file: ${filePath}`);
+    return filePath;
+}
+function readOptionalPathList(options, key) {
+    const value = readOptionalPath(options, key);
+    return value ? [value] : undefined;
 }
 function resolvePath(value) {
     return resolve(process.cwd(), value);
+}
+function resolveBoundedPath(value, label) {
+    const resolved = resolvePath(value);
+    const boundary = process.env.KBPREP_CLI_BOUNDARY_DIR?.trim();
+    if (!boundary)
+        return resolved;
+    const boundaryPath = resolve(process.cwd(), boundary);
+    const relation = relative(boundaryPath, resolved);
+    if (relation === "" || (!relation.startsWith("..") && !parse(relation).root))
+        return resolved;
+    throw new Error(`Path escapes CLI boundary for --${label.replace(/_/g, "-")}: ${value}`);
 }
 function readString(options, key) {
     const value = options[key];

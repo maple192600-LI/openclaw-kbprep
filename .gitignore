@@ -1,6 +1,7 @@
 .kbprep/
 node_modules/
 coverage/
+.coverage
 dist/**/*.test.js
 dist/**/*.test.d.ts
 

@@ -4,7 +4,7 @@ This file tracks known product and engineering gaps that are not hidden defects.
 
 ## Release 0.5.1 Hardening Closed In `codex/kbprep-0.5.1-hardening`
 
-- `#2`: AI review now routes through a reusable backend abstraction. OpenClaw remains the default adapter; `local_rules`, `claude_code`, and `codex` are explicit backend names for future provider implementations.
+- `#2`: AI review now routes through a reusable backend abstraction. Host-specific providers are not maintained in this repository; callers may inject their own review backend.
 - `#3`: `python/kbprep_worker/prepare.py` is now a thin orchestrator entrypoint with the heavy pipeline moved into stage modules.
 - `#4`: `docs/index.html` no longer carries inline CSS; page styling lives in `docs/assets/style.css`.
 - `#5`: `device_override` no longer exposes `auto`. Unset means automatic CPU/GPU selection; `cpu` and `cuda` are advanced forced overrides.
@@ -14,19 +14,33 @@ This file tracks known product and engineering gaps that are not hidden defects.
 
 ## Post-Release Roadmap
 
-- Add real non-OpenClaw provider implementations behind the `AIReviewBackend` interface.
-- Continue splitting `python/kbprep_worker/stages/pipeline.py` into smaller stage-specific files after the release branch is stable.
+- Continue migrating helper bodies from `python/kbprep_worker/diagnose/__init__.py` into focused package modules as adjacent behavior changes touch that area.
 - Expand language-specific signal tests beyond the current Chinese/English coverage.
+
+## Review Closure Guards
+
+- The 22-item review closure is protected by Python guard tests in `python/tests/test_review_regression_guards.py` and the shared error-code contract in `python/tests/test_error_code_contract.py`.
+- OCR normalization rules live in `rules/base/ocr_normalization.json`; `normalize.py` loads and validates rules instead of carrying a hardcoded regex table.
+- Heading-level repair is intentionally pass-through by default. KBPrep must not guess heading rewrites without an explicit future rule and source evidence.
+- Standalone AI review does not include a vendor-specific LLM client. It supports host-injected backends and a host-neutral external command protocol; when no backend is configured it returns a warning instead of pretending AI review ran.
+- Worker scenario coverage is split across `src/test/scenarios/*.test.ts`; `src/worker.test.ts` is only a compatibility smoke entry and must not re-import the scenario files.
+- Node subprocess timeouts share `src/runtime/subprocess.ts`. Worker, runtime setup, and external AI review commands must wait for close/error/forced-kill and include timeout, exit/signal, and stderr evidence.
+- `pipeline_core.run()` is a short orchestration entry point. Stage work lives in explicit `_stage_*` helpers and uses `PipelineState` instead of relying on a giant `locals()` scope for error reports.
+- `python/kbprep_worker/obsidian_kb/` is a responsibility-split package: `__init__.py` only exports compatibility APIs, `policy.py` owns curation orchestration, `signals.py` owns predicates, `body_notes.py` owns vault rendering, and template state is explicit through `ObsidianContext`.
+- `python/kbprep_worker/diagnose/` is a package; guard tests prevent restoring the old single-file module.
 
 ## Closed Workflow Risks
 
-- Default `curated_obsidian_kb` delivery is intentionally Obsidian-first: `latest_outputs.final_md` stays `null`, while `latest_outputs.obsidian_dir`, `latest_outputs.obsidian_index`, and `final_artifact_type="obsidian_dir"` identify the final deliverable.
-- `kbprep_cleanup(action="finalize")` must preserve the profile-specific final deliverable: `obsidian/` for curated runs, source-side Markdown/assets for standard runs.
+- Default `standard` delivery publishes source-side Markdown through `latest_outputs.final_md`.
+- Legacy `curated_obsidian_kb` delivery is Obsidian-first: `latest_outputs.final_md` stays `null`, while `latest_outputs.obsidian_dir`, `latest_outputs.obsidian_index`, and `final_artifact_type="obsidian_dir"` identify the final deliverable.
+- `kbprep-cleanup --action finalize` must preserve the profile-specific final deliverable: `obsidian/` for curated runs, source-side Markdown/assets for standard runs.
+- CLI path safety distinguishes read and write boundaries: absolute `--input` paths are allowed for explicit local source reads, while output/cleanup roots reject filesystem roots and file-like patch/config/feedback inputs are validated before worker dispatch.
+- Service-style deployments can set `KBPREP_CLI_BOUNDARY_DIR` to keep write/run paths inside a fixed boundary without blocking explicit local input reads.
 
-## Adapter Naming
+## Host Packaging
 
-The project package is `kbprep`. The OpenClaw adapter/plugin id remains `openclaw-kbprep`, and the current GitHub repository slug is still `openclaw-kbprep`. Renaming the remote repository requires a GitHub repository settings change plus documentation URL updates.
+The project package is `kbprep`. This repository provides CLI commands, rule dictionaries, `skills/kbprep/SKILL.md`, and install guidance. Host-specific agent packaging should be generated by the user or host tooling.
 
 ## Tracked `dist`
 
-`dist/` is intentionally committed because OpenClaw managed installs need readable JavaScript runtime files. CI now rebuilds and checks `dist` for drift so source and compiled runtime cannot silently diverge.
+`dist/` is intentionally committed because npm-installed CLI usage needs readable JavaScript runtime files.

@@ -23,7 +23,7 @@
 ### Task 2: Add Curated Obsidian Policy And Renderer
 
 **Files:**
-- Create: `python/kbprep_worker/obsidian_kb.py`
+- Create: `python/kbprep_worker/obsidian_kb/`
 - Modify: `python/kbprep_worker/render_outputs.py`
 
 - [x] Implement author bio and identity wrapper detection.
@@ -37,7 +37,7 @@
 
 **Files:**
 - Modify: `python/kbprep_worker/prepare.py`
-- Modify: `python/kbprep_worker/quality.py`
+- Modify: `python/kbprep_worker/quality/`
 - Modify: `python/kbprep_worker/apply_patch.py`
 - Modify: `src/index.ts`
 - Modify: `src/aiReview.ts`
@@ -63,8 +63,8 @@
 ### Task 5: Tighten Against The Manual Reference
 
 **Files:**
-- Modify: `python/kbprep_worker/obsidian_kb.py`
-- Modify: `python/kbprep_worker/quality.py`
+- Modify: `python/kbprep_worker/obsidian_kb/`
+- Modify: `python/kbprep_worker/quality/`
 - Modify: `src/worker.test.ts`
 
 - [x] Remove table-of-contents windows and adjacent TOC headings.

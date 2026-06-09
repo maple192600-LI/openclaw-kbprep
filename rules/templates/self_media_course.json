@@ -1,0 +1,101 @@
+{
+  "schema": "kbprep.cleaning_rules.v1",
+  "description": "Optional self-media/course cleanup template. This is not loaded by the generic standard profile.",
+  "rules": [
+    {
+      "id": "self_media.promotional_line.follow_platform",
+      "type": "promotional_line",
+      "action": "discard",
+      "match": "regex",
+      "pattern": "(?:欢迎)?关注(?:公众号|视频号|小红书|B站|抖音|YouTube|频道|账号)",
+      "risk_tag": "promotional_line",
+      "reason": "standalone platform follow line"
+    },
+    {
+      "id": "self_media.promotional_line.subscribe_platform",
+      "type": "promotional_line",
+      "action": "discard",
+      "match": "regex",
+      "pattern": "(?:关注|订阅).{0,8}(?:公众号|视频号|小红书|B站|抖音|YouTube|频道|账号)",
+      "risk_tag": "promotional_line",
+      "reason": "standalone platform subscription line"
+    },
+    {
+      "id": "self_media.promotional_line.english_follow",
+      "type": "promotional_line",
+      "action": "discard",
+      "match": "regex",
+      "pattern": "(?:follow us on|subscribe to|subscribe to our)",
+      "risk_tag": "promotional_line",
+      "reason": "standalone social follow line"
+    }
+  ],
+  "keyword_sets": {
+    "cta_keywords": [
+      "微信号",
+      "加微信",
+      "添加微信",
+      "添加好友",
+      "公众号",
+      "follow us on",
+      "subscribe to",
+      "subscribe to our",
+      "join our discord",
+      "join our slack"
+    ],
+    "qr_image_markers": [],
+    "image_qr_indicators": [
+      "关注公众号",
+      "小助理",
+      "加微信"
+    ],
+    "image_marketing_indicators": [
+      "课程",
+      "训练营"
+    ],
+    "image_operation_indicators": [],
+    "image_proof_indicators": [],
+    "image_educational_heading_indicators": [
+      "实战",
+      "实操",
+      "底层逻辑",
+      "原理",
+      "机制",
+      "策略",
+      "思路",
+      "公众号",
+      "小红书",
+      "ai",
+      "chatgpt",
+      "打造",
+      "赋能",
+      "赛道",
+      "账号",
+      "内容"
+    ],
+    "tutorial_indicators": [
+      "实操",
+      "实战",
+      "手把手",
+      "底层逻辑",
+      "原理",
+      "机制",
+      "方法论",
+      "策略",
+      "思路",
+      "心法",
+      "认知",
+      "框架",
+      "模型",
+      "体系",
+      "系统",
+      "入门",
+      "进阶"
+    ],
+    "knowledge_terms": [
+      "保留完整上下文",
+      "工具",
+      "账号矩阵"
+    ]
+  }
+}

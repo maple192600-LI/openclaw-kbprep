@@ -4,7 +4,7 @@ CLI entry point for kbprep_worker.
 Usage:
     python -m kbprep_worker.cli <command> --json-stdin
 
-Commands: setup-env, preflight, diagnose, prepare, apply-review, cleanup
+Commands: setup-env, preflight, diagnose, prepare, apply-review, feedback, cleanup
 """
 import json
 import sys
@@ -44,6 +44,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="kbprep_worker", description="KBPrep Python worker CLI")
     parser.add_argument("command", choices=[
         "setup-env", "setup_env", "preflight", "diagnose", "prepare", "apply-review", "apply_review",
+        "feedback",
         "prepare-batch", "prepare_batch", "cleanup"
     ], help="Command to execute")
     parser.add_argument("--json-stdin", action="store_true", required=True,
@@ -68,6 +69,7 @@ def main() -> None:
         "prepare": cmd_prepare,
         "apply-review": cmd_apply_review,
         "apply_review": cmd_apply_review,
+        "feedback": cmd_feedback,
         "prepare-batch": cmd_prepare_batch,
         "prepare_batch": cmd_prepare_batch,
         "cleanup": cmd_cleanup,
@@ -108,6 +110,11 @@ def cmd_prepare(data: dict) -> None:
 def cmd_apply_review(data: dict) -> None:
     from . import apply_patch as ap
     ap.run(data)
+
+
+def cmd_feedback(data: dict) -> None:
+    from . import feedback as fb
+    fb.run(data)
 
 
 def cmd_prepare_batch(data: dict) -> None:

@@ -3,43 +3,65 @@
  * Uses child_process.spawn to call Python CLI.
  * No HTTP service, no daemon, no persistent worker.
  */
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, appendFile } from "node:fs/promises";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import Type from "typebox";
+import { Value } from "typebox/value";
 import { makeError } from "./errors.js";
-async function writeStdin(stream, input) {
-    await new Promise((resolve, reject) => {
-        const cleanup = () => {
-            stream.off("error", onError);
-            stream.off("drain", onDrain);
-        };
-        const finish = () => {
-            cleanup();
-            stream.end(() => resolve());
-        };
-        const onError = (err) => {
-            cleanup();
-            reject(err);
-        };
-        const onDrain = () => {
-            finish();
-        };
-        stream.once("error", onError);
-        try {
-            if (stream.write(input)) {
-                finish();
-                return;
-            }
-        }
-        catch (err) {
-            onError(err instanceof Error ? err : new Error(String(err)));
-            return;
-        }
-        stream.once("drain", onDrain);
-    });
-}
+import { ManagedProcessTimeoutError, runManagedProcess } from "./runtime/subprocess.js";
+const EnvelopeRecordSchema = Type.Record(Type.String(), Type.Unknown());
+const GenericDataSchema = EnvelopeRecordSchema;
+const PrepareDataSchema = Type.Object({
+    run_id: Type.Optional(Type.String()),
+    run_dir: Type.String(),
+    outputs: Type.Optional(EnvelopeRecordSchema),
+    latest_outputs: Type.Optional(EnvelopeRecordSchema),
+    strict_errors: Type.Optional(Type.Array(Type.String())),
+    warnings: Type.Optional(Type.Array(Type.String())),
+}, { additionalProperties: true });
+const DiagnoseDataSchema = Type.Object({
+    input_file: Type.Optional(Type.String()),
+    detected_format: Type.Optional(Type.String()),
+    recommended_pipeline: Type.Optional(Type.String()),
+}, { additionalProperties: true });
+const ApplyReviewDataSchema = Type.Object({
+    run_dir: Type.Optional(Type.String()),
+    applied: Type.Optional(Type.Number()),
+    rejected: Type.Optional(Type.Number()),
+    latest_outputs: Type.Optional(EnvelopeRecordSchema),
+}, { additionalProperties: true });
+const FeedbackDataSchema = GenericDataSchema;
+const CleanupDataSchema = GenericDataSchema;
+const PrepareBatchDataSchema = GenericDataSchema;
+const WorkerDataSchemas = {
+    diagnose: DiagnoseDataSchema,
+    prepare: PrepareDataSchema,
+    apply_review: ApplyReviewDataSchema,
+    feedback: FeedbackDataSchema,
+    cleanup: CleanupDataSchema,
+    prepare_batch: PrepareBatchDataSchema,
+};
+const WorkerEnvelopeSchema = Type.Union([
+    Type.Object({
+        ok: Type.Literal(true),
+        data: Type.Optional(EnvelopeRecordSchema),
+        metrics: Type.Optional(EnvelopeRecordSchema),
+        warnings: Type.Optional(Type.Array(Type.String())),
+    }, { additionalProperties: false }),
+    Type.Object({
+        ok: Type.Literal(false),
+        error: Type.Object({
+            code: Type.String(),
+            message: Type.String(),
+            recoverable: Type.Boolean(),
+            suggested_action: Type.String(),
+            details: EnvelopeRecordSchema,
+        }, { additionalProperties: false }),
+        warnings: Type.Optional(Type.Array(Type.String())),
+    }, { additionalProperties: false }),
+]);
 /**
  * Call Python worker via CLI mode.
  * stdout: single JSON envelope
@@ -74,70 +96,41 @@ export async function callWorker(command, input, options) {
     if (options.config?.mineru_timeout_seconds) {
         env.KBPREP_MINERU_TIMEOUT_SECONDS = String(options.config.mineru_timeout_seconds);
     }
-    const child = spawn(pythonPath, args, {
-        cwd,
-        stdio: ["pipe", "pipe", "pipe"],
-        signal,
-        windowsHide: true,
-        env,
-    });
-    let stdout = "";
-    child.stdout.on("data", (chunk) => {
-        stdout += chunk.toString("utf-8");
-    });
-    let stderr = "";
     const stderrLines = [];
-    child.stderr.on("data", (chunk) => {
+    let logPath;
+    if (logDir) {
+        await mkdir(logDir, { recursive: true });
+        logPath = join(logDir, `${jobId}.jsonl`);
+    }
+    const collectStderr = (chunk) => {
         const text = chunk.toString("utf-8");
-        stderr += text;
         for (const line of text.split("\n")) {
             const trimmed = line.trim();
             if (trimmed)
                 stderrLines.push(trimmed);
         }
-    });
-    // Write stderr JSONL to log file if logDir specified
-    if (logDir) {
-        await mkdir(logDir, { recursive: true });
-        const logPath = join(logDir, `${jobId}.jsonl`);
-        child.stderr.on("data", async (chunk) => {
-            try {
-                await appendFile(logPath, chunk);
-            }
-            catch { }
-        });
-    }
-    const exitPromise = new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-            // Send SIGTERM first, wait 5s, then SIGKILL
-            child.kill("SIGTERM");
-            const killTimer = setTimeout(() => {
-                child.kill("SIGKILL");
-            }, 5000);
-            child.on("close", () => {
-                clearTimeout(killTimer);
-            });
-            reject(createTimeoutError(timeoutMs));
-        }, timeoutMs);
-        child.on("close", (code, sig) => {
-            clearTimeout(timer);
-            resolve({ code, sig });
-        });
-        child.on("error", (err) => {
-            clearTimeout(timer);
-            reject(err);
-        });
-    });
+        if (logPath) {
+            void appendFile(logPath, chunk).catch(() => { });
+        }
+    };
     try {
-        const inputJson = JSON.stringify(input);
-        await writeStdin(child.stdin, inputJson);
-        const { code } = await exitPromise;
-        const envelope = parseEnvelope(stdout, stderrLines.slice(-120));
+        const result = await runManagedProcess({
+            command: pythonPath,
+            args,
+            label: `worker ${command}`,
+            timeoutMs,
+            cwd,
+            signal,
+            env,
+            stdin: JSON.stringify(input),
+            onStderrData: collectStderr,
+        });
+        const envelope = parseEnvelope(result.stdout, stderrLines.slice(-120), command);
         if (!envelope.ok && !envelope.error) {
             return {
                 ok: false,
-                error: makeError("E_TIMEOUT", `Worker exited with code ${code}`, {
-                    details: { exitCode: code, stderr_tail: stderrLines.slice(-10) },
+                error: makeError("E_TIMEOUT", `Worker exited with code ${result.code}`, {
+                    details: { exitCode: result.code, signal: result.signal, stderr_tail: stderrLines.slice(-10) },
                 }),
                 warnings: envelope.warnings,
             };
@@ -154,13 +147,19 @@ export async function callWorker(command, input, options) {
                 }),
             };
         }
-        if (isTimeoutError(err)) {
+        if (err instanceof ManagedProcessTimeoutError) {
+            const timeoutStderrTail = (err.stderrTail || "").split(/\r?\n/).filter(Boolean);
             return {
                 ok: false,
                 error: makeError("E_TIMEOUT", `Worker timed out after ${timeoutMs}ms`, {
                     recoverable: true,
                     suggested_action: "Increase timeout or check worker health.",
-                    details: { timeout_ms: timeoutMs, stderr_tail: stderrLines.slice(-10) },
+                    details: {
+                        timeout_ms: timeoutMs,
+                        exitCode: err.code,
+                        signal: err.signal,
+                        stderr_tail: timeoutStderrTail.length ? timeoutStderrTail.slice(-10) : stderrLines.slice(-10),
+                    },
                 }),
             };
         }
@@ -172,7 +171,7 @@ export async function callWorker(command, input, options) {
         };
     }
 }
-function parseEnvelope(raw, stderrTail) {
+export function parseEnvelope(raw, stderrTail, command) {
     const trimmed = raw.trim();
     if (!trimmed) {
         return {
@@ -183,7 +182,29 @@ function parseEnvelope(raw, stderrTail) {
         };
     }
     try {
-        return JSON.parse(trimmed);
+        const parsed = JSON.parse(trimmed);
+        if (!Value.Check(WorkerEnvelopeSchema, parsed)) {
+            const validationErrors = [...Value.Errors(WorkerEnvelopeSchema, parsed)]
+                .slice(0, 8)
+                .map((error) => ({
+                path: "path" in error ? error.path : undefined,
+                message: error.message,
+            }));
+            return {
+                ok: false,
+                error: makeError("E_WORKER_BAD_JSON", "Worker returned a malformed JSON envelope.", {
+                    details: {
+                        validation_errors: validationErrors,
+                        stdout_preview: trimmed.slice(0, 500),
+                        stderr_tail: stderrTail,
+                    },
+                }),
+            };
+        }
+        const dataValidation = validateCommandData(parsed, command, trimmed, stderrTail);
+        if (dataValidation)
+            return dataValidation;
+        return parsed;
     }
     catch (err) {
         return {
@@ -193,6 +214,33 @@ function parseEnvelope(raw, stderrTail) {
             }),
         };
     }
+}
+function validateCommandData(parsed, command, stdout, stderrTail) {
+    if (!command || !parsed || typeof parsed !== "object")
+        return null;
+    const envelope = parsed;
+    if (envelope.ok !== true)
+        return null;
+    const schema = WorkerDataSchemas[command];
+    if (!schema || Value.Check(schema, envelope.data))
+        return null;
+    const validationErrors = [...Value.Errors(schema, envelope.data)]
+        .slice(0, 8)
+        .map((error) => ({
+        path: "path" in error ? error.path : undefined,
+        message: error.message,
+    }));
+    return {
+        ok: false,
+        error: makeError("E_WORKER_BAD_JSON", `Worker returned malformed data for ${command}.`, {
+            details: {
+                command,
+                validation_errors: validationErrors,
+                stdout_preview: stdout.slice(0, 500),
+                stderr_tail: stderrTail,
+            },
+        }),
+    };
 }
 function createTimeoutError(ms) {
     const err = new Error(`Worker timed out after ${ms}ms`);

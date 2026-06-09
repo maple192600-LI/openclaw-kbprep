@@ -9,35 +9,51 @@ import json
 import logging
 import re
 from pathlib import Path
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
-# ── OCR fix whitelist ─────────────────────────────────────────────
-# High-confidence OCR confusion patterns (AI ↔ Al ↔ A)
-OCR_FIX_PATTERNS = [
-    # "All in Al" → "All in AI" (word boundary aware)
-    (re.compile(r'\bAll in Al\b'), "All in AI", "ai_context_fix", 0.99),
-    # "Al编程" → "AI编程" (Al followed by Chinese)
-    (re.compile(r'Al(?=[\u4e00-\u9fff])'), "AI", "ai_context_fix", 0.96),
-    # "Al工具" → "AI工具"
-    (re.compile(r'Al(?=工具|时代|使用|模型|编程|技术|应用|内容|创作|协作|问答|助手)'), "AI", "ai_context_fix", 0.96),
-    # "A时代" → "AI时代" (single A before Chinese, but not common English words)
-    (re.compile(r'(?<![a-zA-Z])A(?=[\u4e00-\u9fff])'), "AI", "ai_context_fix", 0.90),
-    # "ClaudeCode" → "Claude Code"
-    (re.compile(r'ClaudeCode'), "Claude Code", "space_fix", 0.95),
-    # "Google Al Studio" → "Google AI Studio"
-    (re.compile(r'Google Al Studio'), "Google AI Studio", "ai_context_fix", 0.99),
-    # "YouTubeAl" → "YouTube AI"
-    (re.compile(r'YouTubeAl'), "YouTube AI", "ai_context_fix", 0.99),
-    # "AIlinAI" → "AI in AI" (common OCR confusion)
-    (re.compile(r'AIlinAI'), "AI in AI", "ai_context_fix", 0.95),
-]
+OcrRule = tuple[re.Pattern[str], str, str, float]
 
-# Low-confidence patterns that go to review
-OCR_REVIEW_PATTERNS = [
-    # Single "A" that might be "AI" (context-dependent)
-    (re.compile(r'(?<![a-zA-Z])A(?![a-zA-Z])'), "AI?", "ai_context_review", 0.50),
-]
+
+@lru_cache(maxsize=1)
+def load_ocr_normalization_rules() -> tuple[list[OcrRule], list[OcrRule]]:
+    """Load OCR normalization rules from the packaged rule dictionary."""
+    root = Path(__file__).resolve().parents[2]
+    rules_path = root / "rules" / "base" / "ocr_normalization.json"
+    payload = json.loads(rules_path.read_text(encoding="utf-8"))
+    if payload.get("schema") != "kbprep.ocr_normalization.v1":
+        raise ValueError(f"Invalid OCR normalization schema in {rules_path}")
+    return (
+        _compile_ocr_rules(payload.get("fix_rules", []), rules_path),
+        _compile_ocr_rules(payload.get("review_rules", []), rules_path),
+    )
+
+
+def _compile_ocr_rules(items: object, source: Path) -> list[OcrRule]:
+    if not isinstance(items, list):
+        raise ValueError(f"{source}: OCR rule groups must be lists")
+    compiled: list[OcrRule] = []
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"{source}: OCR rule {idx} must be an object")
+        pattern = item.get("pattern")
+        replacement = item.get("replacement")
+        rule = item.get("rule")
+        confidence = item.get("confidence")
+        if not isinstance(pattern, str) or not pattern:
+            raise ValueError(f"{source}: OCR rule {idx}.pattern is required")
+        if not isinstance(replacement, str):
+            raise ValueError(f"{source}: OCR rule {idx}.replacement must be a string")
+        if not isinstance(rule, str) or not rule:
+            raise ValueError(f"{source}: OCR rule {idx}.rule is required")
+        if not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1:
+            raise ValueError(f"{source}: OCR rule {idx}.confidence must be between 0 and 1")
+        try:
+            compiled.append((re.compile(pattern), replacement, rule, float(confidence)))
+        except re.error as exc:
+            raise ValueError(f"{source}: OCR rule {idx}.pattern is invalid: {exc}") from exc
+    return compiled
 
 
 def normalize(converted_text: str, run_dir: str, mineru_artifacts: dict = None) -> dict:
@@ -54,7 +70,8 @@ def normalize(converted_text: str, run_dir: str, mineru_artifacts: dict = None) 
     fixes.extend(table_fixes)
 
     # ── Step 2: Fix OCR confusions ────────────────────────────────
-    for pattern, replacement, rule, confidence in OCR_FIX_PATTERNS:
+    ocr_fix_patterns, _ocr_review_patterns = load_ocr_normalization_rules()
+    for pattern, replacement, rule, confidence in ocr_fix_patterns:
         matches = list(pattern.finditer(text))
         if matches:
             for m in reversed(matches):  # Reverse to preserve offsets
@@ -178,30 +195,12 @@ def _html_table_to_markdown(html: str) -> str | None:
 
 
 def _fix_heading_levels(text: str) -> tuple[str, list[dict]]:
-    """Fix heading level issues (e.g., skip from H1 to H3)."""
-    fixes = []
-    lines = text.split("\n")
-    prev_level = 0
+    """Do not guess heading-level repairs.
 
-    for i, line in enumerate(lines):
-        m = re.match(r'^(#{1,6})\s+(.+)$', line)
-        if m:
-            level = len(m.group(1))
-            if level > prev_level + 1 and prev_level > 0:
-                # Fix: reduce level to prev_level + 1
-                new_level = prev_level + 1
-                new_line = "#" * new_level + " " + m.group(2)
-                fixes.append({
-                    "rule": "heading_level_fix",
-                    "before": line,
-                    "after": new_line,
-                    "confidence": 0.80,
-                })
-                lines[i] = new_line
-                level = new_level
-            prev_level = level
-
-    return "\n".join(lines), fixes
+    Earlier automatic heading rewrites could damage intentional heading jumps.
+    Keep source heading levels unless a future explicit rule has source evidence.
+    """
+    return text, []
 
 
 def _fix_code_blocks(text: str) -> tuple[str, list[dict]]:

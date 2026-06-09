@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+from .converter_capabilities import get_capability_for_extension
+from .title_filters import load_title_filters
 from .supported_formats import (
     DIRECT_EXTENSIONS,
     EPUB_EXTENSIONS,
@@ -24,6 +26,7 @@ def write_diagnosis_report(
     warnings: list[str],
 ) -> None:
     fallback = diagnosis_fallback(input_path)
+    capability = diagnosis.get("capability") or fallback["capability"]
     report = {
         "schema": "kbprep.diagnosis_report.v1",
         "input_file": input_path.name,
@@ -33,6 +36,7 @@ def write_diagnosis_report(
         "detected_format": diagnosis.get("detected_format") or fallback["detected_format"],
         "recommended_pipeline": diagnosis.get("recommended_pipeline") or fallback["recommended_pipeline"],
         "conversion_strategy": diagnosis.get("conversion_strategy") or fallback["conversion_strategy"],
+        "capability": capability,
         "split_strategy": diagnosis.get("split_strategy"),
         "text_profile": diagnosis.get("text_profile"),
         "text_layer_health": diagnosis.get("text_layer_health"),
@@ -54,6 +58,7 @@ def write_diagnosis_report(
 def diagnosis_fallback(input_path: Path) -> dict:
     ext = input_path.suffix.lower()
     detected_format = FORMAT_BY_EXTENSION.get(ext, "unknown")
+    capability = get_capability_for_extension(ext)
     if ext in DIRECT_EXTENSIONS:
         strategy = "direct"
     elif ext in OFFICE_XML_EXTENSIONS:
@@ -68,6 +73,7 @@ def diagnosis_fallback(input_path: Path) -> dict:
         "detected_format": detected_format,
         "recommended_pipeline": strategy,
         "conversion_strategy": strategy,
+        "capability": capability,
     }
 
 
@@ -145,7 +151,10 @@ def _normalize_title_candidate(text: str) -> str | None:
     if cjk_tail:
         candidate = cjk_tail.group(1).strip()
 
-    candidate = re.split(r"(?:Anthropic|Claude|Building an|花叔|译|横版|中文译本|仅供|内部研究)", candidate, maxsplit=1)[0].strip()
+    title_filters = load_title_filters()
+    if title_filters.split_patterns:
+        split_re = "|".join(f"(?:{pattern})" for pattern in title_filters.split_patterns)
+        candidate = re.split(split_re, candidate, maxsplit=1, flags=re.IGNORECASE)[0].strip()
     candidate = candidate.strip(" ·:：-—_")
     if not candidate:
         return None
@@ -155,12 +164,15 @@ def _normalize_title_candidate(text: str) -> str | None:
 
 
 def _title_candidate_score(candidate: str, line_index: int) -> int:
+    title_filters = load_title_filters()
     compact = re.sub(r"\s+", "", candidate)
     if len(compact) < 4 or len(compact) > 40:
         return 0
     if compact in {"目录", "资源", "Resources", "Contents"}:
         return 0
-    if re.search(r"(目录|Chapter\d*|Resources|Anthropic|Claude|译|中文译本|仅供|内部研究|公众号|小红书|YouTube|B站)", compact, re.IGNORECASE):
+    structural_rejects = (r"目录", r"Chapter\d*", r"Resources")
+    configured_rejects = tuple(f"(?:{pattern})" for pattern in title_filters.reject_patterns)
+    if re.search("|".join([*structural_rejects, *configured_rejects]), compact, re.IGNORECASE):
         return 0
 
     score = 100 - min(line_index, 30)

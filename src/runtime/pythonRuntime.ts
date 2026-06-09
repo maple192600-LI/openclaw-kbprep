@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ManagedProcessTimeoutError, runManagedProcess } from "./subprocess.js";
 
 const RUNTIME_MARKER_SCHEMA = "kbprep.local_venv.v1";
 const PYTHON_WORKER_DEPENDENCY_SPEC = "mineru[all]>=3.2.1,<4;PyMuPDF>=1.27,<2;beautifulsoup4==4.14.3;lxml==6.0.2";
@@ -14,9 +14,57 @@ export type RuntimeConfig = {
   python_path?: string;
 };
 
+export type RuntimeSetupStepId =
+  | "create_venv"
+  | "upgrade_packaging"
+  | "install_worker"
+  | "probe_environment";
+
+export type RuntimeSetupStep = {
+  id: RuntimeSetupStepId;
+  label: string;
+  timeoutMs: number;
+};
+
+export type RuntimeSetupProgressEvent = {
+  type: "step_start" | "step_success";
+  step: RuntimeSetupStep;
+};
+
+export type RuntimeSetupProgress = (event: RuntimeSetupProgressEvent) => void;
+
+const DEFAULT_RUNTIME_SETUP_STEPS: Array<Omit<RuntimeSetupStep, "timeoutMs"> & { defaultTimeoutMs: number; env: string }> = [
+  {
+    id: "create_venv",
+    label: "create KBPrep local Python virtual environment",
+    defaultTimeoutMs: 5 * 60_000,
+    env: "KBPREP_CREATE_VENV_TIMEOUT_MS",
+  },
+  {
+    id: "upgrade_packaging",
+    label: "upgrade pip in KBPrep local Python virtual environment",
+    defaultTimeoutMs: 10 * 60_000,
+    env: "KBPREP_UPGRADE_PACKAGING_TIMEOUT_MS",
+  },
+  {
+    id: "install_worker",
+    label: "install kbprep worker dependencies into KBPrep local Python virtual environment",
+    defaultTimeoutMs: 60 * 60_000,
+    env: "KBPREP_INSTALL_WORKER_TIMEOUT_MS",
+  },
+  {
+    id: "probe_environment",
+    label: "detect hardware and tune KBPrep local Python dependencies",
+    defaultTimeoutMs: 30 * 60_000,
+    env: "KBPREP_PROBE_ENVIRONMENT_TIMEOUT_MS",
+  },
+];
+const MIN_RUNTIME_SETUP_TIMEOUT_MS = 30_000;
+const MAX_RUNTIME_SETUP_TIMEOUT_MS = 90 * 60_000;
+
 export function resolvePythonPath(_startPath?: string, config?: RuntimeConfig): string {
-  const runtimePython = pluginVenvPythonPath();
-  if (isPluginVenvReady(config)) return runtimePython;
+  const runtimePython = kbprepVenvPythonPath();
+  if (isKbprepVenvReady(config)) return runtimePython;
 
   if (shouldSkipAutoSetupForTests()) {
     if (config?.python_path?.trim()) return config.python_path.trim();
@@ -29,51 +77,47 @@ export function resolvePythonPath(_startPath?: string, config?: RuntimeConfig): 
   return runtimePython;
 }
 
-export async function ensurePythonRuntime(config?: RuntimeConfig): Promise<string> {
-  const pythonPath = pluginVenvPythonPath();
-  if (isPluginVenvReady(config)) return pythonPath;
+export async function ensurePythonRuntime(config?: RuntimeConfig, onProgress?: RuntimeSetupProgress): Promise<string> {
+  const pythonPath = kbprepVenvPythonPath();
+  if (isKbprepVenvReady(config)) return pythonPath;
 
-  if (shouldSkipAutoSetupForTests()) return resolvePythonPath(pluginRootDir(), config);
+  if (shouldSkipAutoSetupForTests()) return resolvePythonPath(kbprepRootDir(), config);
 
-  const venvDir = pluginVenvDir();
-  cleanupStalePluginRuntime(config);
+  const venvDir = kbprepVenvDir();
+  cleanupStaleKbprepRuntime(config);
   mkdirSync(dirname(venvDir), { recursive: true });
   const bootstrap = bootstrapPythonCommand(config);
-  await runSetupCommand(
-    bootstrap.command,
-    [...bootstrap.args, "-m", "venv", venvDir],
-    "create KBPrep local Python virtual environment",
-    5 * 60_000,
-  );
-  await runSetupCommand(
+  const steps = runtimeSetupSteps();
+  await runRuntimeSetupStep(steps[0], onProgress, bootstrap.command, [...bootstrap.args, "-m", "venv", venvDir]);
+  await runRuntimeSetupStep(
+    steps[1],
+    onProgress,
     pythonPath,
     ["-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"],
-    "upgrade pip in KBPrep local Python virtual environment",
-    10 * 60_000,
   );
-  await runSetupCommand(
+  await runRuntimeSetupStep(
+    steps[2],
+    onProgress,
     pythonPath,
-    ["-m", "pip", "install", "-e", pluginPythonProjectDir()],
-    "install kbprep worker dependencies into KBPrep local Python virtual environment",
-    60 * 60_000,
+    ["-m", "pip", "install", "-e", kbprepPythonProjectDir()],
   );
-  const setupResult = await runSetupCommand(
+  const setupResult = await runRuntimeSetupStep(
+    steps[3],
+    onProgress,
     pythonPath,
     ["-m", "kbprep_worker.cli", "setup-env", "--json-stdin"],
-    "detect hardware and tune KBPrep local Python dependencies",
-    30 * 60_000,
     JSON.stringify({ device_override: config?.device_override }),
   );
   const setupEnvelope = parseSetupEnvelope(setupResult.stdout);
-  writeFileSync(pluginVenvReadyMarker(), JSON.stringify({
+  writeFileSync(kbprepVenvReadyMarker(), JSON.stringify({
     schema: RUNTIME_MARKER_SCHEMA,
     created_at: new Date().toISOString(),
-    plugin_version: pluginPackageVersion(),
+    kbprep_version: kbprepPackageVersion(),
     python_executable: pythonPath,
     requested_device_override: config?.device_override ?? null,
     actual_device: actualDeviceFromSetupEnvelope(setupEnvelope),
     python_project: {
-      path: pluginPythonProjectDir(),
+      path: kbprepPythonProjectDir(),
       dependency_spec: PYTHON_WORKER_DEPENDENCY_SPEC,
     },
     setup_env: setupEnvelope,
@@ -81,7 +125,54 @@ export async function ensurePythonRuntime(config?: RuntimeConfig): Promise<strin
   return pythonPath;
 }
 
-function pluginRootDir(): string {
+function runtimeSetupSteps(): RuntimeSetupStep[] {
+  return DEFAULT_RUNTIME_SETUP_STEPS.map((step) => ({
+    id: step.id,
+    label: step.label,
+    timeoutMs: runtimeSetupTimeoutMs(step.env, step.defaultTimeoutMs),
+  }));
+}
+
+export function runtimeSetupStepsForTest(): RuntimeSetupStep[] {
+  return runtimeSetupSteps();
+}
+
+async function runRuntimeSetupStep(
+  step: RuntimeSetupStep,
+  onProgress: RuntimeSetupProgress | undefined,
+  command: string,
+  args: string[],
+  stdin = "",
+): Promise<{ stdout: string; stderr: string }> {
+  onProgress?.({ type: "step_start", step });
+  const result = await runSetupCommand(command, args, step.label, step.timeoutMs, stdin);
+  onProgress?.({ type: "step_success", step });
+  return result;
+}
+
+function runtimeSetupTimeoutMs(envName: string, fallback: number): number {
+  const raw = process.env[envName];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.max(parsed, MIN_RUNTIME_SETUP_TIMEOUT_MS), MAX_RUNTIME_SETUP_TIMEOUT_MS);
+}
+
+/*
+ * Kept small and exported for characterization tests; production callers should
+ * go through ensurePythonRuntime so setup progress is emitted consistently.
+ */
+export async function runSetupCommandForTest(
+  command: string,
+  args: string[],
+  label: string,
+  timeoutMs: number,
+  stdin = "",
+): Promise<{ stdout: string; stderr: string }> {
+  return runSetupCommand(command, args, label, timeoutMs, stdin);
+}
+
+function kbprepRootDir(): string {
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const leaf = basename(moduleDir);
   if (leaf === "dist" || leaf === "src") {
@@ -93,48 +184,55 @@ function pluginRootDir(): string {
   return moduleDir;
 }
 
-function pluginPythonProjectDir(): string {
-  return join(pluginRootDir(), "python");
+function kbprepPythonProjectDir(): string {
+  return join(kbprepRootDir(), "python");
 }
 
-function pluginVenvDir(): string {
-  return join(pluginRootDir(), ".kbprep", "venv");
+function kbprepVenvDir(): string {
+  return join(kbprepRootDir(), ".kbprep", "venv");
 }
 
-function pluginVenvReadyMarker(): string {
-  return join(pluginRootDir(), ".kbprep", "runtime-ready.json");
+function kbprepVenvReadyMarker(): string {
+  return join(kbprepRootDir(), ".kbprep", "runtime-ready.json");
 }
 
-function isPluginVenvReady(config?: RuntimeConfig): boolean {
-  if (!existsSync(pluginVenvPythonPath()) || !existsSync(pluginVenvReadyMarker())) {
+function isKbprepVenvReady(config?: RuntimeConfig): boolean {
+  if (!existsSync(kbprepVenvPythonPath()) || !existsSync(kbprepVenvReadyMarker())) {
     return false;
   }
   return isRuntimeMarkerCurrent(readRuntimeMarker(), config);
 }
 
-export function pluginVenvPythonPath(): string {
-  const venvDir = pluginVenvDir();
+export function kbprepVenvPythonPath(): string {
+  const venvDir = kbprepVenvDir();
   return process.platform === "win32"
     ? join(venvDir, "Scripts", "python.exe")
     : join(venvDir, "bin", "python");
 }
 
-export const kbprepVenvPythonPath = pluginVenvPythonPath;
-
 function shouldSkipAutoSetupForTests(): boolean {
   return process.env.VITEST === "true" || process.env.KBPREP_SKIP_AUTO_SETUP === "1";
 }
 
-function cleanupStalePluginRuntime(config?: RuntimeConfig): void {
-  if (!existsSync(pluginVenvDir()) && !existsSync(pluginVenvReadyMarker())) return;
-  if (isPluginVenvReady(config)) return;
-  rmSync(pluginVenvDir(), { recursive: true, force: true });
-  rmSync(pluginVenvReadyMarker(), { force: true });
+function cleanupStaleKbprepRuntime(config?: RuntimeConfig): void {
+  if (!existsSync(kbprepVenvDir()) && !existsSync(kbprepVenvReadyMarker())) return;
+  if (isKbprepVenvReady(config)) return;
+  assertManagedRuntimePath(kbprepVenvDir());
+  rmSync(kbprepVenvDir(), { recursive: true, force: true });
+  rmSync(kbprepVenvReadyMarker(), { force: true });
+}
+
+function assertManagedRuntimePath(target: string): void {
+  const expected = resolve(kbprepRootDir(), ".kbprep", "venv");
+  const actual = resolve(target);
+  if (actual !== expected) {
+    throw new Error(`Refusing to remove unmanaged KBPrep runtime path: ${actual}`);
+  }
 }
 
 function readRuntimeMarker(): unknown {
   try {
-    return JSON.parse(readFileSync(pluginVenvReadyMarker(), "utf-8"));
+    return JSON.parse(readFileSync(kbprepVenvReadyMarker(), "utf-8"));
   } catch {
     return null;
   }
@@ -149,8 +247,8 @@ export function isRuntimeMarkerCurrent(marker: unknown, config?: RuntimeConfig):
 
   return (
     data.schema === RUNTIME_MARKER_SCHEMA
-    && data.plugin_version === pluginPackageVersion()
-    && data.python_executable === pluginVenvPythonPath()
+    && markerVersion(data) === kbprepPackageVersion()
+    && data.python_executable === kbprepVenvPythonPath()
     && requestedDeviceOverride(data) === (config?.device_override ?? null)
     && pythonProject?.dependency_spec === PYTHON_WORKER_DEPENDENCY_SPEC
     && setupEnv?.ok === true
@@ -173,9 +271,13 @@ function requestedDeviceOverride(marker: Record<string, unknown>): "cuda" | "cpu
   return marker.device_override === "cuda" || marker.device_override === "cpu" ? marker.device_override : null;
 }
 
-function pluginPackageVersion(): string {
+function markerVersion(data: Record<string, unknown>): unknown {
+  return data.kbprep_version ?? data.plugin_version;
+}
+
+function kbprepPackageVersion(): string {
   try {
-    const pkg = JSON.parse(readFileSync(join(pluginRootDir(), "package.json"), "utf-8"));
+    const pkg = JSON.parse(readFileSync(join(kbprepRootDir(), "package.json"), "utf-8"));
     return String(pkg.version || "unknown");
   } catch {
     return "unknown";
@@ -190,18 +292,21 @@ function bootstrapPythonCommand(config?: RuntimeConfig): { command: string; args
   return { command: "python3", args: [] };
 }
 
-function runSetupCommand(
+async function runSetupCommand(
   command: string,
   args: string[],
   label: string,
   timeoutMs: number,
   stdin = "",
 ): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolvePromise, reject) => {
-    const child = spawn(command, args, {
-      cwd: pluginRootDir(),
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
+  try {
+    const result = await runManagedProcess({
+      command,
+      args,
+      label,
+      timeoutMs,
+      cwd: kbprepRootDir(),
+      stdin,
       env: {
         ...process.env,
         PIP_DISABLE_PIP_VERSION_CHECK: "1",
@@ -209,34 +314,16 @@ function runSetupCommand(
         PYTHONIOENCODING: "utf-8",
       },
     });
-    let stderr = "";
-    let stdout = "";
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf-8");
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf-8");
-    });
-    if (stdin) child.stdin?.end(stdin);
-    else child.stdin?.end();
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      reject(new Error(`Timed out while trying to ${label}`));
-    }, timeoutMs);
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code === 0) {
-        resolvePromise({ stdout, stderr });
-        return;
-      }
-      const tail = (stderr || stdout).split(/\r?\n/).filter(Boolean).slice(-20).join("\n");
-      reject(new Error(`Failed to ${label} (exit ${code}). ${tail}`));
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
+    if (result.code === 0) return { stdout: result.stdout, stderr: result.stderr };
+
+    const tail = (result.stderr || result.stdout).split(/\r?\n/).filter(Boolean).slice(-20).join("\n");
+    throw new Error(`Failed to ${label} (exit ${result.code}, signal ${result.signal ?? "none"}). ${tail}`);
+  } catch (err) {
+    if (err instanceof ManagedProcessTimeoutError) {
+      throw new Error(`Timed out while trying to ${label} after ${err.timeoutMs}ms. ${err.stderrTail || err.stdoutTail}`);
+    }
+    throw err;
+  }
 }
 
 function parseSetupEnvelope(stdout: string): unknown {

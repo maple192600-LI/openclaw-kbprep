@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="openclaw-kbprep converts local raw source files into clean, traceable Markdown for Obsidian and LLM Wiki workflows.">
-  <title>KB Prep Tool - OpenClaw 知识库清洗插件</title>
+  <meta name="description" content="KBPrep converts local raw source files into clean, traceable Markdown for Obsidian and LLM Wiki workflows.">
+  <title>KBPrep - 本地知识库清洗 CLI</title>
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -12,7 +12,7 @@
     <div class="nav-inner">
       <div class="brand">
         <span class="brand-mark">KB</span>
-        <span>openclaw-kbprep</span>
+        <span>kbprep</span>
       </div>
       <nav class="nav-links" aria-label="页面导航">
         <a href="#formats">格式</a>
@@ -30,7 +30,7 @@
         <h1 id="hero-title">KB Prep Tool</h1>
         <p>把本地拿到的 PDF、Office、网页、字幕、笔记、电子书、代码资料，转换成结构清晰、正文细节完整、污染内容可追溯的 Markdown。</p>
         <div class="hero-actions">
-          <a class="button" href="https://github.com/maple192600-LI/openclaw-kbprep">查看 GitHub</a>
+          <a class="button" href=".">查看源码</a>
           <a class="button secondary" href="#install">安装命令</a>
         </div>
       </div>
@@ -140,12 +140,13 @@ strict gates:
     <section id="install" class="wide-band">
       <div class="section-inner split">
         <div>
-          <h2>安装到 OpenClaw</h2>
-          <p class="muted">插件首次运行会在自己的目录创建 `.kbprep/venv`，依赖只安装在插件环境里，不污染系统 Python。</p>
+          <h2>安装 CLI 与中立 Skill</h2>
+          <p class="muted">首次运行会在自己的目录创建 `.kbprep/venv`，依赖只安装在 KBPrep 本地环境里，不污染系统 Python。</p>
         </div>
-        <pre class="code-block"><code>openclaw plugins install git:github.com/maple192600-LI/openclaw-kbprep
-openclaw gateway restart
-openclaw plugins inspect openclaw-kbprep --runtime --json</code></pre>
+        <pre class="code-block"><code>npm install
+npm run build
+kbprep-preflight --help
+kbprep-prepare --input ./source.pdf --output ./.kbprep/source --force</code></pre>
       </div>
     </section>
   </main>

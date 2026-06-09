@@ -11,18 +11,26 @@ KBPrep does one job: turn a local raw source file into readable, clean Markdown 
 
 It does not build indexes, generate final wiki articles, summarize source material, or fetch remote platform content. For YouTube, Douyin, Xiaohongshu, and similar sources, v1 expects a local subtitle, transcript, saved page, or exported text file.
 
+## Current Safety Contracts
+
+- Treat KBPrep as host-neutral. Do not add OpenClaw, Claude, Codex, or other host adapter logic to this repository.
+- OCR normalization is rule-dictionary driven through `rules/base/ocr_normalization.json`.
+- Heading levels are preserved unless a future explicit rule with source evidence is added.
+- AI review must use a host-injected backend or the standalone external command protocol. If neither is configured, report the warning and use review packs.
+
 ## Operator Workflow
 
-1. Run `kbprep_preflight` once for the workspace or output root.
-2. Run `kbprep_analyze` on the source file.
-3. Run `kbprep_prepare` on one representative file.
+1. Run `kbprep-preflight` once for the workspace or output root.
+2. Run `kbprep-analyze` on the source file.
+3. Run `kbprep-prepare` on one representative file.
 4. Check `quality_report.json` and confirm there are no strict errors.
 5. Check `discarded.md` and `review_needed.md`; do not finalize while `review_needed.md` has unresolved content.
 6. Confirm the profile-specific final deliverable:
    - `curated_obsidian_kb`: use `latest_outputs.obsidian_dir` and `latest_outputs.obsidian_index`; `latest_outputs.final_md` should be `null`.
    - `standard`: use `latest_outputs.final_md`, the source-side Markdown beside the source file.
-7. Run `kbprep_cleanup(action="finalize")` only after the user accepts the result.
-8. Use `kbprep_prepare_batch` only after one representative sample passes the same checks.
+7. Use `kbprep-feedback` when user review finds a repeated cleanup miss or mistaken deletion.
+8. Run `kbprep-cleanup --action finalize` only after the user accepts the result.
+9. Use `kbprep-batch` only after one representative sample passes the same checks.
 
 Do not accept fake closure:
 
@@ -33,7 +41,7 @@ Do not accept fake closure:
 
 ## Tools
 
-### `kbprep_preflight`
+### `kbprep-preflight`
 
 Read-only runtime readiness check before conversion. It reports:
 
@@ -51,7 +59,7 @@ If full conversion dependencies are missing, text-like files may still work, but
 
 KBPrep v0.5 is tuned for Simplified Chinese self-media, course, and knowledge-base material. English support is best-effort and includes English step markers, URLs, CLI flags, prompts, and common subscription/join CTA patterns. Other languages are not yet tested. Check `quality_report.json` `language_detected` before accepting non-Chinese runs.
 
-### `kbprep_analyze`
+### `kbprep-analyze`
 
 Read-only diagnosis. It detects:
 
@@ -60,9 +68,15 @@ Read-only diagnosis. It detects:
 - Text profile: short text, long text, tutorial, meeting/interview, transcript, note, or ebook/long report.
 - OCR recommendation and text quality warnings.
 
-### `kbprep_prepare`
+### `kbprep-prepare`
 
 Single-file conversion and cleaning pipeline.
+
+When the source came from a known site, export, or platform, pass provenance so source-scoped cleanup can stay narrow:
+
+```bash
+kbprep-prepare --input ./source.md --output ./.kbprep/source --source-url "https://example.com/course/lesson-1" --source-domain "example.com" --site-name "Example Course"
+```
 
 For converter-backed formats such as PDF, Word, PPT, Excel, EPUB, and images, KBPrep first preserves the original file, then validates obvious container problems before invoking the heavy converter. A corrupted or mislabeled `.docx`, `.pptx`, `.xlsx`, or `.epub` fails with `E_CONVERT_INPUT_INVALID` and must not publish `cleaned.md` or `latest.json`.
 
@@ -72,11 +86,11 @@ Modes:
 
 - `rules_only`: deterministic conversion and conservative cleaning.
 - `rules_plus_review_pack`: also writes `review_pack.json` for AI or human review.
-- `ai_review`: asks an OpenClaw subagent to classify review-pack blocks, then applies a guarded JSON Patch. Text cannot be rewritten.
+- `ai_review`: asks a caller-injected generic review backend to classify review-pack blocks, then applies a guarded JSON Patch. Text cannot be rewritten.
 
 Use `ai_review` only when contextual judgment matters, such as deciding whether "platform", "account", "side project", "group", or "community" is real tutorial content or marketing pollution.
 
-### `kbprep_apply_review`
+### `kbprep-apply-review`
 
 Applies a JSON Patch to block metadata after human or AI review.
 
@@ -94,7 +108,42 @@ Forbidden changes:
 - Protected blocks such as operation steps, prompts, code, tables, tool instructions, concrete examples, links, parameters, and numbers.
 - Invalid metadata that would make a block disappear from all rendered outputs.
 
-### `kbprep_cleanup`
+### `kbprep-feedback`
+
+Records review feedback as a proposed cleanup rule.
+
+Use it when the user says:
+
+- this kind of pollution should be deleted next time
+- this was mistakenly deleted and should be protected
+- this pattern should be reviewed before publication
+
+`kbprep-feedback` writes `.kbprep/rules/user/proposed_rules.jsonl` in the current project by default. It must not directly affect future runs until the proposal is reviewed and promoted with `kbprep-feedback --accept-proposal <id|latest>`. Promotion validates proposal examples and counterexamples first; a rule that would match a counterexample is rejected instead of being loaded. When evidence supports it, the failed acceptance response appends a narrower follow-up proposal to review. Promoted rules are stored in `.kbprep/rules/user/accepted_rules.jsonl` and loaded by deterministic cleanup.
+
+When a broad discard proposal hits counterexamples and the affected run has a detected document type, the follow-up proposal is narrowed to that `document_type`. Review that narrower proposal instead of accepting the broad one.
+
+Use `--scope source_pattern --source-pattern "<source-fragment>"` when the feedback should apply only to a specific source family, site export, domain, or filename pattern. `source_pattern` matches source identity, not body text. Source identity always includes input path, source path, and file name; when `kbprep-prepare` receives provenance, it can also include `source_url`, `source_domain`, and `site_name`. Use keyed patterns such as `source_domain:example.com` when the rule must only match one identity field. `pattern` still matches the body text to discard, review, or protect.
+
+When the same feedback pattern appears in multiple runs, KBPrep should prefer a narrow repeated-feedback proposal using shared `source_identity` fields such as `source_domain` or `site_name` before falling back to filename prefixes. Do not promote repeated feedback as a broad `user` or `global` rule unless the user explicitly accepts that blast radius.
+
+Portable learned rules may also live in the packaged skill/rules directory:
+
+```text
+rules/user/
+  proposed_rules.jsonl
+  accepted_rules.jsonl
+  rejected_rules.jsonl
+```
+
+The packaged `rules/user/accepted_rules.jsonl` file is loaded by deterministic cleanup and is included in `npm run pack:check`. Keep it empty by default for a clean public package; copy only reviewed, reusable accepted rules there when intentionally distributing a customized skill.
+
+Prefer `kbprep-feedback --accept-proposal <id|latest> --rerun-after-accept` when the original run came from `kbprep-prepare`. The rerun verification proves whether the new rule removed discard patterns or preserved protect patterns in `cleaned.md`. If rerun metadata is unavailable, report that gap instead of claiming the feedback rule is proven.
+
+If the user rejects a proposal, run `kbprep-feedback --reject-proposal <id|latest> --reject-reason "<reason>"`. Rejected proposals are stored in `.kbprep/rules/user/rejected_rules.jsonl`; they are feedback memory only and must not be loaded as cleanup rules.
+
+When repeated accepted feedback belongs to the same document type, use `kbprep-feedback --suggest-dictionary-updates --rules-dir ./.kbprep/rules/user` to generate review-only `dictionary_suggestions.jsonl`. Before promoting more rules, run `kbprep-feedback --summarize-promotion-history --target-rules-dir ./rules` and check failed or unverified document types. Promote only after review with `kbprep-feedback --promote-dictionary-suggestion --document-type <type> --confirm-dictionary-update --rerun-after-promotion --rules-dir ./.kbprep/rules/user --target-rules-dir ./rules`. If failed promotion history exists, do not continue unless the user explicitly approves `--allow-failed-promotion-history` after reviewing failed regression samples. After fixing failed samples, run `kbprep-feedback --resolve-promotion-failures --document-type <type> --confirm-failure-resolved --representative-run-dir <dir> --target-rules-dir ./rules`; only a passing rerun should append a resolution record. The promotion must report representative rerun results and append `promotion_history.jsonl`; if rerun provenance is missing, say the dictionary was written but regression proof is unavailable.
+
+### `kbprep-cleanup`
 
 Removes intermediate artifacts after the user accepts a result. It must never delete the source file or the profile-specific final deliverable.
 
@@ -106,7 +155,7 @@ Actions:
 
 If `review_needed.md` still has content, `finalize` should stop unless `confirm_review_needed=true` is explicitly provided.
 
-### `kbprep_prepare_batch`
+### `kbprep-batch`
 
 Directory processing. It runs one sample first and stops if that sample fails quality gates. This prevents one bad rule or converter choice from damaging a whole batch.
 
@@ -153,7 +202,7 @@ Each successful run writes a profile-specific final deliverable. The top-level o
     review_pack.json
 ```
 
-For `profile="curated_obsidian_kb"`, the final deliverable is `obsidian/`, entered through `obsidian/00-索引.md`; `final_md` is intentionally `null`. For `profile="standard"`, the final deliverable is the source-side final Markdown. After `kbprep_cleanup(action="finalize")`, only the final deliverable and a small manifest such as `kbprep_manifest.json` or `kbprep_batch_manifest.json` should remain.
+For `profile="curated_obsidian_kb"`, the final deliverable is `obsidian/`, entered through `obsidian/00-索引.md`; `final_md` is intentionally `null`. For `profile="standard"`, the final deliverable is the source-side final Markdown. After `kbprep-cleanup --action finalize`, only the final deliverable and a small manifest such as `kbprep_manifest.json` or `kbprep_batch_manifest.json` should remain.
 
 For short files, `parts/` may be empty. For long files, parts are cut by headings and natural content boundaries, not by page number. `parts/parts_manifest.json` records `part_id`, `heading_path`, `block_ids`, and `char_count`; reading `part_001.md`, `part_002.md`, ... in manifest order should reconstruct `cleaned.md` after removing frontmatter. Top-level files are updated only after a run has no strict quality errors.
 

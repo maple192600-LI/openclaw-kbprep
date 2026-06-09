@@ -1,24 +1,25 @@
-import { type AIReviewBackend, type OpenClawSubagentRuntime } from "./adapters/ai_review/index.js";
+import { type AIReviewBackend } from "./adapters/ai_review/index.js";
 import { type WorkerResult } from "./worker.js";
 type PluginConfig = {
-    ai_review_backend?: "openclaw" | "local_rules" | "claude_code" | "codex";
+    ai_review_backend?: "external" | "local_rules";
     ai_review_provider?: string;
     ai_review_model?: string;
+    ai_review_command?: string;
     device_override?: "cuda" | "cpu";
     max_cpu_threads?: number;
     min_free_memory_gb?: number;
 };
 type AiReviewParams = {
     mode?: "rules_only" | "rules_plus_review_pack" | "ai_review";
-    ai_review_backend?: "openclaw" | "local_rules" | "claude_code" | "codex";
+    ai_review_backend?: "external" | "local_rules";
     ai_review_provider?: string;
     ai_review_model?: string;
+    ai_review_command?: string;
 };
 type AiReviewContext = {
     api: {
         runtime?: {
             aiReviewBackend?: AIReviewBackend;
-            subagent?: OpenClawSubagentRuntime;
         };
     };
     toolCallId: string;

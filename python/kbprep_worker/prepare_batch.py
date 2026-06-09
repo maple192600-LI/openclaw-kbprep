@@ -11,7 +11,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from .envelope import ok, fail
-from .supported_formats import BATCH_SUPPORTED_EXTENSIONS, FORMAT_BY_EXTENSION, MEDIA_EXTENSIONS, MINERU_EXTENSIONS
+from .supported_formats import (
+    BATCH_SUPPORTED_EXTENSIONS,
+    EXTERNAL_CONVERSION_REQUIRED_EXTENSIONS,
+    FORMAT_BY_EXTENSION,
+    MEDIA_EXTENSIONS,
+    MINERU_EXTENSIONS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +25,8 @@ SUPPORTED_EXTENSIONS = BATCH_SUPPORTED_EXTENSIONS
 HEAVY_CONVERSION_EXTENSIONS = MINERU_EXTENSIONS
 
 DEFAULT_MIN_FREE_GB = 4.0
+DEFAULT_MAX_QUALITY_ITERATIONS = 3
+BATCH_MAX_QUALITY_ITERATIONS = DEFAULT_MAX_QUALITY_ITERATIONS
 
 IGNORED_DIRECTORY_NAMES = {
     ".git",
@@ -51,7 +59,8 @@ def _available_memory_gb() -> float:
 
 
 def _process_one_file(file_path: Path, output_root: str, profile: str,
-                      language: str, mode: str, force: bool, artifact_policy: str = "keep_latest") -> dict:
+                      language: str, mode: str, force: bool, artifact_policy: str = "keep_latest",
+                      max_quality_iterations: int | str | None = None) -> dict:
     payload = {
         "input_path": str(file_path),
         "output_root": output_root,
@@ -62,6 +71,7 @@ def _process_one_file(file_path: Path, output_root: str, profile: str,
         "splitter": "auto",
         "force": force,
         "artifact_policy": artifact_policy,
+        "max_quality_iterations": max_quality_iterations if max_quality_iterations is not None else BATCH_MAX_QUALITY_ITERATIONS,
     }
     proc = subprocess.run(
         [sys.executable, "-m", "kbprep_worker.cli", "prepare", "--json-stdin"],
@@ -177,6 +187,8 @@ def _scan_input_files(input_p: Path) -> tuple[list[Path], dict]:
             skipped_unsupported += 1
             if ext in MEDIA_EXTENSIONS:
                 entry["reason"] = "media_binary_not_transcribed_in_v1"
+            elif ext in EXTERNAL_CONVERSION_REQUIRED_EXTENSIONS:
+                entry["reason"] = "external_conversion_required"
             else:
                 entry["reason"] = f"unsupported_extension:{ext or '<none>'}"
         entries.append(entry)
@@ -215,13 +227,17 @@ def _is_heavy_conversion_file(file_path: Path) -> bool:
 
 
 def run(data: dict) -> None:
+    global BATCH_MAX_QUALITY_ITERATIONS
+
     input_dir = data["input_dir"]
     output_root = data["output_root"]
-    profile = data.get("profile", "curated_obsidian_kb")
+    profile = data.get("profile", "standard")
     language = data.get("language", "zh")
     mode = data.get("mode", "rules_only")
     force = data.get("force", False)
     artifact_policy = data.get("artifact_policy", "keep_latest")
+    max_quality_iterations = data.get("max_quality_iterations", DEFAULT_MAX_QUALITY_ITERATIONS)
+    BATCH_MAX_QUALITY_ITERATIONS = max_quality_iterations
     min_free_gb = data.get("min_free_memory_gb", DEFAULT_MIN_FREE_GB)
     convert_jobs = int(data.get("convert_jobs", 1))
 
@@ -269,7 +285,15 @@ def run(data: dict) -> None:
         "started_at": started_at,
     })
     sample_output_root = _output_root_for_file(output_p, sample)
-    sample_result = _process_one_file(sample, str(sample_output_root), profile, language, mode, force, artifact_policy)
+    sample_result = _process_one_file(
+        sample,
+        str(sample_output_root),
+        profile,
+        language,
+        mode,
+        force,
+        artifact_policy,
+    )
     sample_data = sample_result.get("data", {})
     sample_entry = {
         "file": sample.name,
