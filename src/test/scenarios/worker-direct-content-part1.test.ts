@@ -159,8 +159,11 @@ describe("kbprep worker pipeline - direct content conversion part 1", () => {
       expect(quality.document_type).toBe("report");
       expect(quality.document_type_detection.confidence).toBeGreaterThan(0);
       expect(quality.document_type_detection.reasons.length).toBeGreaterThan(0);
-      expect(quality.cleaning_rule_sources).toContain("rules\\document_types\\report.json");
-      expect(quality.cleaning_rule_sources).not.toContain("rules\\templates\\self_media_course.json");
+      const ruleSources = quality.cleaning_rule_sources.map((source: string) =>
+        source.replaceAll("\\", "/"),
+      );
+      expect(ruleSources).toContain("rules/document_types/report.json");
+      expect(ruleSources).not.toContain("rules/templates/self_media_course.json");
 
       const metadata = JSON.parse(readFileSync(path.join(envelope.data.run_dir, "run_metadata.json"), "utf8"));
       expect(metadata.document_type).toBe("report");
