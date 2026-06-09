@@ -3,7 +3,6 @@
 import re
 from pathlib import Path
 
-from .cleanup_safety import _is_image_block
 from .markdown_signals import _extract_image_sources
 
 DETAIL_SIGNAL_PATTERNS = {

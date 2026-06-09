@@ -10,7 +10,7 @@ from ..envelope import fail, ok
 from ..rule_schema import validate_rule_file
 from .inputs import _positive_int, _rules_dir, _target_rules_dir
 from .jsonl_store import _read_jsonl
-from .patterns import _dedupe_strings, _optional_string
+from .patterns import _optional_string
 from .proposals import _proposal_string_list
 from .promotion_history import _append_promotion_history, _promotion_history_risk
 from .rerun_verification import _rerun_after_dictionary_promotion

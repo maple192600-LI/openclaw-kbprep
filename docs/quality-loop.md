@@ -78,6 +78,22 @@ When strict errors remain at the configured limit, KBPrep adds
 must inspect `quality_report.json`, `discarded.md`, and `review_needed.md`
 before changing rules or source input.
 
+`kbprep-prepare --repair-loop` is the CLI path for the same principle when a
+user wants a usable Markdown file instead of a bare stop signal. On each failed
+quality pass, KBPrep writes:
+
+- `failure_diagnosis.json`: machine-readable failure type, stage, source file,
+  strict errors, and evidence
+- `repair_plan.md`: plain-language diagnosis, blocked publish reason, and next
+  handling step
+- `repair_actions.json`: executable safe actions such as copying discoverable
+  Markdown assets or restoring wrongly discarded detail blocks
+
+The repair loop never accepts cleanup rules automatically and never publishes a
+final Markdown file while strict errors remain. Pollution residue becomes a rule
+proposal or manual review task; table, code, heading, and conversion loss remain
+blocked unless a deterministic fallback can prove the missing evidence returned.
+
 `next_actions` is the compact machine-readable summary of what failed.
 `quality_tasks` is the executable handoff package for a user or AI coding agent.
 Each task names the failed gate, goal, background, files to read, allowed and

@@ -5,7 +5,6 @@ Parses normalized.md into structured blocks with metadata.
 Input: normalized.md + page map + image map + heading map
 Output: blocks.jsonl (list of block dicts)
 """
-import hashlib
 import json
 import logging
 import re
@@ -61,7 +60,6 @@ def blockify(text: str, source_hash: str, mineru_artifacts: dict = None, run_dir
     page_map = _build_page_map(text, mineru_artifacts)
 
     # Track heading path
-    heading_path: list[str] = []
     heading_stack: list[tuple[int, str]] = []  # (level, title)
 
     # Split into logical blocks

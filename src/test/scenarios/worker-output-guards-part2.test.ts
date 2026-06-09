@@ -160,6 +160,43 @@ describe("kbprep worker pipeline - output guards part 2", () => {
     }
   });
 
+  it("fails apply-review when quality_report.json is corrupt instead of treating it as empty", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kbprep-corrupt-quality-"));
+    try {
+      runPython(
+        [
+          "import io, json, sys",
+          "from pathlib import Path",
+          "from kbprep_worker.apply_patch import run",
+          "run_dir = Path(sys.argv[1])",
+          "run_dir.mkdir(parents=True, exist_ok=True)",
+          "(run_dir / 'chunks').mkdir()",
+          "(run_dir / 'diagnosis_report.json').write_text(json.dumps({'diagnosis': {'file_id': 'corrupt-quality'}}), encoding='utf-8')",
+          "(run_dir / 'quality_report.json').write_text('{not valid json', encoding='utf-8')",
+          "block = {'block_id': 'b1', 'source_sha256': 'corrupt-quality', 'status': 'keep', 'type': 'paragraph', 'text': 'Step 1: keep retry_count=3.', 'protected': False, 'risk_tags': [], 'confidence': 0.7}",
+          "(run_dir / 'blocks.jsonl').write_text(json.dumps(block, ensure_ascii=False) + '\\n', encoding='utf-8')",
+          "stdout = io.StringIO()",
+          "old_stdout = sys.stdout",
+          "try:",
+          "    sys.stdout = stdout",
+          "    try:",
+          "        run({'run_dir': str(run_dir), 'patch_json': [{'op': 'replace', 'path': '/blocks/b1/status', 'value': 'review'}]})",
+          "    except SystemExit:",
+          "        pass",
+          "finally:",
+          "    sys.stdout = old_stdout",
+          "payload = json.loads(stdout.getvalue())",
+          "assert payload['ok'] is False, payload",
+          "assert payload['error']['code'] == 'E_INVALID_QUALITY_REPORT', payload",
+          "assert 'quality_report.json' in payload['error']['message'], payload",
+        ].join("\n"),
+        [root],
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("fails invalid PPTX inputs before publishing cleaned outputs", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-worker-"));
     try {

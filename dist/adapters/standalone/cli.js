@@ -23,7 +23,7 @@ const HELP = {
         "Reads one source file and reports source type, quality, and recommended processing route.",
     ].join("\n"),
     prepare: [
-        "Usage: kbprep-prepare --input <file> --output <dir> [--profile lite|standard|obsidian_kb|curated_obsidian_kb] [--mode rules_only|rules_plus_review_pack] [--source-url <url>] [--source-domain <domain>] [--site-name <name>] [--max-quality-iterations <n>] [--force] [--config-file <file>]",
+        "Usage: kbprep-prepare --input <file> --output <dir> [--profile lite|standard|obsidian_kb|curated_obsidian_kb] [--mode rules_only|rules_plus_review_pack] [--source-url <url>] [--source-domain <domain>] [--site-name <name>] [--repair-loop] [--max-quality-iterations <n>] [--force] [--config-file <file>]",
         "",
         "Converts one local source file. Default profile standard publishes source-side Markdown; obsidian_kb publishes a generic Obsidian vault; curated_obsidian_kb is an explicit legacy course/self-media template.",
     ].join("\n"),
@@ -126,6 +126,7 @@ export function buildCliPlan(command, options) {
                     source_domain: readString(options, "source_domain"),
                     site_name: readString(options, "site_name"),
                     splitter: readString(options, "splitter") ?? "auto",
+                    repair_loop: readBoolean(options, "repair_loop", false),
                     max_quality_iterations: readNumber(options, "max_quality_iterations", 3),
                 },
                 cwd: outputRoot,

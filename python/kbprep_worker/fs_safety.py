@@ -34,7 +34,7 @@ def safe_rmtree(
     last_error: BaseException | None = None
     for attempt in range(attempts):
         try:
-            shutil.rmtree(target, onexc=_make_writable)
+            shutil.rmtree(target, onerror=_make_writable)
             return True
         except Exception as exc:  # pragma: no cover - exercised by mocked failure.
             last_error = exc
@@ -71,5 +71,5 @@ def _make_writable(function, path, excinfo) -> None:
     try:
         os.chmod(path, stat.S_IWRITE)
         function(path)
-    except Exception:
-        raise excinfo[1]
+    except Exception as exc:
+        raise excinfo[1] from exc

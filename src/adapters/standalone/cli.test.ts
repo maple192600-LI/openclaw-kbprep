@@ -219,6 +219,25 @@ describe("standalone KBPrep CLI adapter", () => {
     expect(plan.input.max_quality_iterations).toBe(4);
   });
 
+  it("maps prepare repair-loop options to the Python worker command", () => {
+    const parsed = parseStandaloneArgs([
+      "--input",
+      "README.md",
+      "--output",
+      ".kbprep/cli-repair-loop",
+      "--repair-loop",
+      "--max-quality-iterations",
+      "5",
+      "--force",
+    ]);
+    const plan = buildCliPlan("prepare", parsed.options);
+
+    expect(plan.command).toBe("prepare");
+    expect(plan.input.repair_loop).toBe(true);
+    expect(plan.input.max_quality_iterations).toBe(5);
+    expect(plan.input.force).toBe(true);
+  });
+
   it("maps prepare source identity options to the Python worker command", () => {
     const parsed = parseStandaloneArgs([
       "--input",

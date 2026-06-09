@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 from .artifacts import _read_json_file
-from .inputs import _target_rules_dir
 from .patterns import _matches_pattern, _optional_string, _string_list
 
 def _rerun_after_dictionary_promotion(

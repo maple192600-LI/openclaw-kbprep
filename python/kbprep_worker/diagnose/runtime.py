@@ -30,7 +30,6 @@ class DiagnoseError(Exception):
 def diagnose_file(data: dict) -> tuple[dict, list[str]]:
     """Analyze one input file and return worker data plus warnings."""
     input_path = data["input_path"]
-    output_root = data.get("output_root", ".")
     override_source_type = data.get("source_type", "auto")
 
     input_p = Path(input_path)

@@ -42,13 +42,13 @@ def office_xml_to_markdown(input_p: Path, run_dir: Path) -> tuple[str, list[str]
             "E_CONVERT_INPUT_INVALID",
             f"{input_p.name} is missing required Office XML part: {e}",
             {"extension": ext},
-        )
-    except zipfile.BadZipFile:
+        ) from e
+    except zipfile.BadZipFile as e:
         raise OfficeXmlConversionError(
             "E_CONVERT_INPUT_INVALID",
             f"{input_p.name} is not a valid Office ZIP container. Check whether the file is corrupted or mislabeled.",
             {"extension": ext},
-        )
+        ) from e
 
     if not markdown.strip():
         raise OfficeXmlConversionError(

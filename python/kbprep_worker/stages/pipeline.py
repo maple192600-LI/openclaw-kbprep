@@ -6,9 +6,11 @@ callers.
 """
 from __future__ import annotations
 
+from ..converters import html as _html_converter
 from . import pipeline_core as _core
 
 PipelineError = _core.PipelineError
+_rich_html_to_markdown = _html_converter.rich_html_to_markdown
 
 
 def run(data: dict) -> None:

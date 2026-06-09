@@ -6,7 +6,6 @@ import json
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
 
 from .rule_loader import builtin_rules_root, rules_root
 

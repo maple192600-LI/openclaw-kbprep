@@ -10,6 +10,7 @@ const steps = [
   ["Type-check TypeScript", npx, ["tsc", "-p", "tsconfig.json", "--noEmit"]],
   ["Run TypeScript integration tests", npm, ["test"]],
   ["Lint Python worker", npm, ["run", "python:ruff"]],
+  ["Type-check Python worker", npm, ["run", "python:typecheck"]],
   ["Run measured Python coverage", npm, ["run", "python:coverage"]],
   ["Run audit guard checks", npm, ["run", "audit:check"]],
   ["Check npm package contents", npm, ["run", "pack:check"]],
