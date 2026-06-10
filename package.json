@@ -20,7 +20,6 @@
     "check:protected-docs": "node scripts/check-protected-docs.mjs",
     "dev:check": "npm run build && npm run audit:check && npm run pack:check",
     "dev:full-check": "npm run release:check",
-    "docs:serve": "node scripts/serve-docs.mjs",
     "pack:check": "node scripts/check-pack.mjs",
     "python:coverage": "python -m coverage run --source=python/kbprep_worker -m unittest discover -s python/tests && python -m coverage report --fail-under=30",
     "python:ruff": "python -m ruff check python/kbprep_worker python/tests",

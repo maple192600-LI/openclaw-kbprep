@@ -1794,10 +1794,6 @@ KBPrep 是一个把各种原始资料稳定变成可进入知识库的 Markdown 
 
 - `docs/kbprep-full-flowchart.html`
 
-项目说明页面：
-
-- `docs/kbprep-capability-guide.html`
-
 本文档与流程图关系：
 
 - 流程图负责表达全链路结构。

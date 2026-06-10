@@ -13,7 +13,7 @@
 - Moved OpenClaw tool registration into `src/adapters/openclaw/`.
 - Added standalone CLI entry points: `kbprep-preflight`, `kbprep-analyze`, `kbprep-prepare`, `kbprep-apply-review`, `kbprep-cleanup`, and `kbprep-batch`.
 - Marked OpenClaw as an optional peer dependency for non-OpenClaw CLI usage.
-- Added host-decoupling and risk-tag documentation.
+- Added host-neutral boundary and risk-tag documentation.
 
 ## 0.4.4
 
