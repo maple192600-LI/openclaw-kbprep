@@ -48,6 +48,7 @@ def run(data: dict) -> None:
                 blocks.append(json.loads(line))
 
     block_map = {b["block_id"]: b for b in blocks}
+    previous_quality = _read_existing_quality_report(quality_path)
 
     # Validate and apply patches
     applied = 0
@@ -124,13 +125,6 @@ def run(data: dict) -> None:
         for block in blocks:
             f.write(json.dumps(block, ensure_ascii=False) + "\n")
 
-    previous_quality = {}
-    if quality_path.exists():
-        try:
-            previous_quality = json.loads(quality_path.read_text(encoding="utf-8"))
-        except Exception:
-            previous_quality = {}
-
     # Re-render outputs
     from . import render_outputs as render_mod
     source_hash = blocks[0].get("source_sha256", "") if blocks else ""
@@ -162,7 +156,8 @@ def run(data: dict) -> None:
     )
 
     review_applied_at = time.time()
-    previous_quality_loop = previous_quality.get("quality_loop") if isinstance(previous_quality.get("quality_loop"), dict) else {}
+    previous_quality_loop = previous_quality.get("quality_loop")
+    previous_quality_loop = previous_quality_loop if isinstance(previous_quality_loop, dict) else {}
     previous_iteration = previous_quality_loop.get("current_iteration", 1)
     quality_iteration = _positive_int(previous_iteration, 1) + 1
     max_quality_iterations = _positive_int(previous_quality_loop.get("max_iterations"), 3)
@@ -249,6 +244,38 @@ def _find_output_root(run_p: Path) -> Path | None:
     if run_p.parent.name == "runs":
         return run_p.parent.parent
     return None
+
+
+def _read_existing_quality_report(quality_path: Path) -> dict:
+    if not quality_path.exists():
+        return {}
+    try:
+        report = json.loads(quality_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        fail(
+            "E_INVALID_QUALITY_REPORT",
+            f"quality_report.json is not valid JSON: {exc}",
+            details={"quality_report": str(quality_path), "line": exc.lineno, "column": exc.colno},
+            recoverable=True,
+            suggested_action="Rerun kbprep-prepare for this run before applying review patches.",
+        )
+    except OSError as exc:
+        fail(
+            "E_INVALID_QUALITY_REPORT",
+            f"quality_report.json could not be read: {exc}",
+            details={"quality_report": str(quality_path)},
+            recoverable=True,
+            suggested_action="Check file permissions or rerun kbprep-prepare for this run before applying review patches.",
+        )
+    if not isinstance(report, dict):
+        fail(
+            "E_INVALID_QUALITY_REPORT",
+            "quality_report.json must contain a JSON object.",
+            details={"quality_report": str(quality_path)},
+            recoverable=True,
+            suggested_action="Rerun kbprep-prepare for this run before applying review patches.",
+        )
+    return report
 
 
 def _read_diagnosis(run_p: Path) -> dict:

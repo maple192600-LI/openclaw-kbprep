@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..envelope import fail, ok
+from ..typing_helpers import as_int, as_object
 from .inputs import _target_rules_dir
 from .jsonl_store import _append_jsonl_locked, _read_jsonl
 from .patterns import _optional_string, _string_list
@@ -175,9 +176,10 @@ def _promotion_history_document_summary(document_type: str, entries: list[dict])
 
     latest = sorted_entries[-1] if sorted_entries else {}
     if latest.get("schema") == "kbprep.dictionary_promotion_resolution.v1":
-        latest_status = "resolved" if latest.get("regression_verification", {}).get("status") == "passed" else "resolution_failed"
+        latest_resolution = as_object(latest.get("regression_verification"))
+        latest_status = "resolved" if latest_resolution.get("status") == "passed" else "resolution_failed"
     else:
-        latest_verification = latest.get("regression_verification") if isinstance(latest.get("regression_verification"), dict) else {}
+        latest_verification = as_object(latest.get("regression_verification"))
         latest_status = _optional_string(latest_verification.get("status")) or "unknown"
     unresolved_failed = max(0, failed - resolved_failed)
     return {
@@ -218,6 +220,7 @@ def _resolve_promotion_failures(data: dict) -> None:
     document_type = _optional_string(data.get("document_type"))
     if not document_type or document_type == "unknown":
         fail("E_INVALID_INPUT", "document_type is required and cannot be unknown")
+        raise AssertionError("unreachable")
     target_rules_dir = _target_rules_dir(data)
     history_path = target_rules_dir / "promotion_history.jsonl"
     if not history_path.exists():
@@ -334,8 +337,4 @@ def _overall_history_recommendation(document_types: list[dict]) -> str:
     return "No promotion history found."
 
 def _positive_int_or_zero(value: object) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return 0
-    return max(0, parsed)
+    return max(0, as_int(value, default=0))

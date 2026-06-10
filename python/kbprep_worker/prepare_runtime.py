@@ -8,7 +8,7 @@ import sys
 
 
 def check_env(profile: str) -> list[str]:
-    warnings = []
+    warnings: list[str] = []
     if sys.version_info < (3, 10):
         warnings.append("Python < 3.10 detected. Some features may not work.")
     return warnings

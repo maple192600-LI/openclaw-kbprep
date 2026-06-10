@@ -5,7 +5,6 @@ Parses normalized.md into structured blocks with metadata.
 Input: normalized.md + page map + image map + heading map
 Output: blocks.jsonl (list of block dicts)
 """
-import hashlib
 import json
 import logging
 import re
@@ -47,7 +46,7 @@ EN_STEP_RE = re.compile(r'^\s*step\s*\d+[\uff1a:\.\)\-\s]+', re.MULTILINE | re.I
 CALLOUT_RE = re.compile(r'^>\s*\[!(\w+)\]', re.MULTILINE)
 
 
-def blockify(text: str, source_hash: str, mineru_artifacts: dict = None, run_dir: str = "") -> list[dict]:
+def blockify(text: str, source_hash: str, mineru_artifacts: dict | None = None, run_dir: str = "") -> list[dict]:
     """
     Parse normalized markdown into structured blocks.
     Each block has: block_id, source_sha256, page_start, page_end,
@@ -61,7 +60,6 @@ def blockify(text: str, source_hash: str, mineru_artifacts: dict = None, run_dir
     page_map = _build_page_map(text, mineru_artifacts)
 
     # Track heading path
-    heading_path: list[str] = []
     heading_stack: list[tuple[int, str]] = []  # (level, title)
 
     # Split into logical blocks
@@ -282,7 +280,7 @@ def _make_block(
     heading_path: list[str],
     source_hash: str,
     page_map: list[dict],
-    override_type: str = None,
+    override_type: str | None = None,
     protected: bool = False,
 ) -> dict | None:
     """Create a block dict from text content."""
@@ -356,7 +354,7 @@ def _infer_block_type(text: str) -> str:
     return "paragraph"
 
 
-def _build_page_map(text: str, mineru_artifacts: dict = None) -> list[dict]:
+def _build_page_map(text: str, mineru_artifacts: dict | None = None) -> list[dict]:
     """Build page boundary map from MinerU content_list."""
     if not mineru_artifacts:
         return []

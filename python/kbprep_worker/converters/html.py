@@ -164,6 +164,13 @@ def rich_html_to_markdown(
     def clean(value: str) -> str:
         return re.sub(r"\s+", " ", value or "").strip()
 
+    def attr_text(value: object) -> str:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (list, tuple)):
+            return " ".join(str(item) for item in value)
+        return "" if value is None else str(value)
+
     page_title = clean(soup.title.get_text(" ", strip=True)) if soup.title else ""
     asset_stem = page_title or source_stem
 
@@ -187,12 +194,12 @@ def rich_html_to_markdown(
             inner = node.get_text("", strip=True)
             return f"`{inner}`" if inner else ""
         if name == "a":
-            href = clean(node.get("href", ""))
+            href = clean(attr_text(node.get("href", "")))
             label = clean(" ".join(inline(c) for c in node.children)) or clean(node.get_text(" ", strip=True)) or href
             return f"[{label}]({href})" if href else label
         if name == "img":
-            alt = clean(node.get("alt") or node.get("title") or "")
-            src = clean(node.get("src", ""))
+            alt = clean(attr_text(node.get("alt") or node.get("title") or ""))
+            src = clean(attr_text(node.get("src", "")))
             if not src:
                 return alt
             if src.startswith("assets/logos/"):
@@ -244,7 +251,7 @@ def rich_html_to_markdown(
 
     def svg_to_md(svg: Tag) -> str:
         nonlocal svg_counter
-        label = clean(svg.get("aria-label") or "")
+        label = clean(attr_text(svg.get("aria-label") or ""))
         title = svg.find("title")
         desc = svg.find("desc")
         if not label and title:
@@ -304,7 +311,7 @@ def rich_html_to_markdown(
             return [image] if image else []
         if name in {"div", "main", "body", "html"}:
             classes = set(node.get("class") or [])
-            lines: list[str] = []
+            child_lines: list[str] = []
             if "card" in classes or "case-card" in classes:
                 title = None
                 for heading_tag in ["h3", "h4"]:
@@ -313,19 +320,19 @@ def rich_html_to_markdown(
                         title = inline(found)
                         break
                 if title:
-                    lines.append(f"#### {title}")
+                    child_lines.append(f"#### {title}")
             for child in node.children:
                 if isinstance(child, Tag) and "card" in classes and child.name and child.name.lower() in {"h3", "h4"}:
                     continue
-                lines.extend(block(child, depth + 1))
-            return lines
+                child_lines.extend(block(child, depth + 1))
+            return child_lines
         if name in {"span", "strong", "b", "em", "i", "a", "code"}:
             value = inline(node)
             return [value] if value else []
-        lines: list[str] = []
+        fallback_lines: list[str] = []
         for child in node.children:
-            lines.extend(block(child, depth + 1))
-        return lines
+            fallback_lines.extend(block(child, depth + 1))
+        return fallback_lines
 
     lines = block(body)
     cleaned: list[str] = []
@@ -372,9 +379,10 @@ def _parse_svg_view_box(value: str) -> tuple[float, float, float, float] | None:
     if len(parts) != 4:
         return None
     try:
-        numbers = tuple(float(part) for part in parts)
+        n0, n1, n2, n3 = (float(part) for part in parts)
     except ValueError:
         return None
+    numbers = (n0, n1, n2, n3)
     if numbers[2] <= 0 or numbers[3] <= 0:
         return None
     return numbers

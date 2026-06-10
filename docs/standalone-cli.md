@@ -44,6 +44,7 @@ from the CLI JSON envelope or the run log directory.
 kbprep-preflight --workdir ./.kbprep/check
 kbprep-analyze --input ./source.pdf --output ./.kbprep/source
 kbprep-prepare --input ./source.pdf --output ./.kbprep/source --mode rules_only --force
+kbprep-prepare --input ./source.md --output ./.kbprep/source --repair-loop --force
 kbprep-prepare --input ./source.md --output ./.kbprep/source --source-url "https://example.com/course/lesson-1" --source-domain "example.com" --site-name "Example Course"
 kbprep-apply-review --run-dir ./.kbprep/source/runs/<run-id> --patch-file ./review.patch.json
 kbprep-feedback --run-dir ./.kbprep/source/runs/<run-id> --feedback-text "下次删除「关注公众号」这种污染"
@@ -79,6 +80,14 @@ kbprep-batch --help
 `--max-quality-iterations <n>` controls how many quality/review passes may be
 recorded before KBPrep stops the loop with `E_QUALITY_ITERATION_LIMIT`. The
 default is 3.
+
+`--repair-loop` turns a failed prepare run into a bounded repair loop. KBPrep
+converts, cleans, checks quality, writes `failure_diagnosis.json`,
+`repair_plan.md`, and `repair_actions.json`, applies only deterministic safe
+repairs, then reruns the quality gates. It publishes final Markdown and updates
+`latest.json` only after strict quality errors are gone. If the failure needs a
+human decision, the run stays unpublished and the repair plan names the blocked
+evidence.
 
 ## Output
 

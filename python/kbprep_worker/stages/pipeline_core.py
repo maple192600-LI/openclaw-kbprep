@@ -10,7 +10,6 @@ Each stage failure is tracked. If any stage fails, subsequent stages are skipped
 import hashlib
 import json
 import logging
-import posixpath
 import re
 import shutil
 import sys
@@ -43,7 +42,7 @@ from ..prepare_runtime import (
 )
 from ..converter_capabilities import get_capability_for_extension
 from ..converters.direct import read_direct_source as _read_direct_source_impl
-from ..converters.html import html_to_markdown as _html_to_markdown, rich_html_to_markdown as _rich_html_to_markdown
+from ..converters.html import html_to_markdown as _html_to_markdown
 from ..converters.office_xml import (
     OfficeXmlConversionError,
     office_xml_to_markdown as _office_xml_to_markdown,
@@ -66,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 class PipelineError(Exception):
     """Raised when a pipeline stage fails."""
-    def __init__(self, code: str, message: str, details: dict = None):
+    def __init__(self, code: str, message: str, details: dict | None = None):
         self.code = code
         self.message = message
         self.details = details or {}
@@ -80,6 +79,14 @@ def _stderr_log(level: str, stage: str, message: str, code: str = "") -> None:
         entry["code"] = code
     sys.stderr.write(json.dumps(entry, ensure_ascii=False) + "\n")
     sys.stderr.flush()
+
+
+def _positive_int(value: Any, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
 
 
 
@@ -96,6 +103,10 @@ class PipelineState:
     override_splitter: str = field(init=False)
     artifact_policy: str = field(init=False)
     max_quality_iterations: int = field(init=False)
+    repair_loop: bool = field(init=False)
+    repair_iteration: int = field(init=False)
+    repair_artifacts: dict[str, Any] = field(default_factory=dict)
+    repair_results: list[dict[str, Any]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     strict_errors: list[str] = field(default_factory=list)
     diagnosis: dict[str, Any] = field(default_factory=dict)
@@ -137,7 +148,9 @@ class PipelineState:
         self.override_source_type = self.data.get("source_type", "auto")
         self.override_splitter = self.data.get("splitter", "auto")
         self.artifact_policy = self.data.get("artifact_policy", "keep_latest")
-        self.max_quality_iterations = self.data.get("max_quality_iterations", 3)
+        self.max_quality_iterations = _positive_int(self.data.get("max_quality_iterations"), 3)
+        self.repair_loop = bool(self.data.get("repair_loop", False))
+        self.repair_iteration = _positive_int(self.data.get("repair_loop_iteration"), 1)
         self.input_p = Path(self.input_path)
         self.root_p = Path(self.output_root)
 
@@ -341,7 +354,7 @@ def _stage_convert(state: PipelineState) -> None:
         try:
             text, office_warnings, office_artifacts = _office_xml_to_markdown(state.input_p, state.run_dir)
         except OfficeXmlConversionError as exc:
-            raise PipelineError(exc.code, exc.message, exc.details)
+            raise PipelineError(exc.code, exc.message, exc.details) from exc
         state.converted_path.write_text(text, encoding="utf-8")
         state.mineru_artifacts.update(office_artifacts)
         if ext == ".pptx":
@@ -555,7 +568,8 @@ def _stage_quality_check(state: PipelineState) -> None:
         diagnosis=state.diagnosis,
         profile=state.profile,
         document_type=state.document_type,
-        quality_iteration=1,
+        quality_iteration=state.repair_iteration,
+        previous_quality_iteration=state.repair_iteration - 1 if state.repair_iteration > 1 else None,
         max_quality_iterations=state.max_quality_iterations,
     )
     state.strict_errors.extend(state.quality_report.get("strict_errors", []))
@@ -599,6 +613,9 @@ def _stage_audit(state: PipelineState) -> None:
 def _stage_publish_or_block(state: PipelineState) -> None:
     assert state.run_dir is not None and state.converted_path is not None and state.latest_file is not None
     state.latest_outputs = _latest_output_paths(state.root_p, state.input_p, state.profile)
+    if state.strict_errors and state.repair_loop:
+        _run_repair_loop_until_stable(state)
+
     if not state.strict_errors:
         if state.profile in {"obsidian_kb", "curated_obsidian_kb"}:
             _stderr_log("info", "obsidian_export", "Rendering Obsidian output after quality gates passed")
@@ -643,6 +660,8 @@ def _stage_publish_or_block(state: PipelineState) -> None:
                 "quality_gates": state.quality_report.get("quality_gates", []),
                 "next_actions": state.quality_report.get("next_actions", []),
                 "quality_tasks": state.quality_report.get("quality_tasks", {}),
+                "repair_artifacts": state.repair_artifacts,
+                "repair_results": state.repair_results,
                 "latest_outputs": state.latest_outputs,
             },
             warnings=state.warnings,
@@ -662,6 +681,46 @@ def _stage_publish_or_block(state: PipelineState) -> None:
         "warnings": state.warnings,
         "strict_errors": state.strict_errors,
     }, warnings=state.warnings)
+
+
+def _run_repair_loop_until_stable(state: PipelineState) -> None:
+    assert state.run_dir is not None
+    from .. import repair_loop as repair_mod
+
+    while state.strict_errors and state.repair_iteration <= state.max_quality_iterations:
+        diagnosis = repair_mod.build_failure_diagnosis(state=state)
+        actions = repair_mod.build_repair_actions(state=state, diagnosis=diagnosis)
+        state.repair_artifacts = repair_mod.write_repair_artifacts(
+            state=state,
+            diagnosis=diagnosis,
+            actions=actions,
+        )
+        if state.repair_iteration >= state.max_quality_iterations:
+            _stderr_log("warn", "repair_loop", "Quality loop iteration limit reached")
+            break
+
+        result = repair_mod.apply_safe_repairs(state=state, actions=actions)
+        state.repair_results.append(result)
+        (state.run_dir / "repair_result.json").write_text(
+            json.dumps(result, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        if result.get("applied_count", 0) <= 0:
+            _stderr_log("warn", "repair_loop", "No safe automatic repair could be applied")
+            break
+
+        state.repair_iteration += 1
+        _stderr_log("info", "repair_loop", f"Applied {result.get('applied_count', 0)} repair action(s); rerunning quality checks")
+        _rerender_and_recheck_after_repair(state)
+
+
+def _rerender_and_recheck_after_repair(state: PipelineState) -> None:
+    state.strict_errors = []
+    state.warnings = []
+    _stage_render_outputs(state)
+    _stage_split(state)
+    _stage_quality_check(state)
+    _stage_audit(state)
 
 
 def _run_outputs(state: PipelineState) -> dict[str, Any]:

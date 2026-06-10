@@ -287,7 +287,8 @@ def _default_required_evidence(capability: Capability) -> list[str]:
 def get_capability_for_extension(extension: str) -> Capability:
     ext = extension.lower()
     for capability in _CAPABILITIES:
-        if ext in capability["extensions"]:
+        extensions = capability.get("extensions")
+        if isinstance(extensions, list) and ext in extensions:
             selected = dict(capability)
             selected["reason"] = f"Extension {ext} matched capability {capability['id']}."
             return selected

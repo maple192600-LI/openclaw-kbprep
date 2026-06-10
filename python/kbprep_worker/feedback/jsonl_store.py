@@ -3,37 +3,40 @@
 import json
 import os
 from pathlib import Path
+from typing import BinaryIO, Any
 
 from ..envelope import fail
 
 class _JsonlFileLock:
     def __init__(self, path: Path):
         self.path = path
-        self.handle = None
+        self.handle: BinaryIO | None = None
 
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.handle = self.path.open("a+b")
+        handle = self.handle
         if os.name == "nt":
-            import msvcrt
-            self.handle.seek(0)
-            msvcrt.locking(self.handle.fileno(), msvcrt.LK_LOCK, 1)
+            msvcrt: Any = __import__("msvcrt")
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
         else:
-            import fcntl
-            fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
+            fcntl: Any = __import__("fcntl")
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         return self
 
     def __exit__(self, exc_type, exc, tb):
         if not self.handle:
             return
+        handle = self.handle
         if os.name == "nt":
-            import msvcrt
-            self.handle.seek(0)
-            msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+            msvcrt: Any = __import__("msvcrt")
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
         else:
-            import fcntl
-            fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
-        self.handle.close()
+            fcntl: Any = __import__("fcntl")
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
 
 def _append_jsonl_locked(path: Path, payload: dict) -> None:
     lock_path = path.with_suffix(path.suffix + ".lock")

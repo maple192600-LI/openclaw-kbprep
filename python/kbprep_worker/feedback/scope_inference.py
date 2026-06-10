@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ..envelope import fail
+from ..typing_helpers import as_object
 from .inputs import _scope
 from .jsonl_store import _read_jsonl
 from .patterns import _dedupe_strings, _optional_string
@@ -52,7 +53,7 @@ def _repeat_feedback_source_pattern(
     match: str,
     pattern: str,
 ) -> dict | None:
-    current_context = artifacts.get("context") if isinstance(artifacts.get("context"), dict) else {}
+    current_context = as_object(artifacts.get("context"))
     current_source = _optional_string(current_context.get("source_name"))
     current_identity = _source_identity_from_context(current_context)
     if not current_source and not current_identity:
@@ -82,22 +83,24 @@ def _repeat_feedback_source_pattern(
     if not related:
         return None
 
-    contexts = [
+    contexts: list[dict] = [
         *[
-            item.get("artifact_context")
+            as_object(item.get("artifact_context"))
             for item in related
             if isinstance(item.get("artifact_context"), dict)
         ],
         current_context,
     ]
-    source_names = _dedupe_strings([
-        *[
-            str(item.get("artifact_context", {}).get("source_name"))
-            for item in related
-            if isinstance(item.get("artifact_context"), dict)
-        ],
-        current_source,
-    ])
+    source_names = _dedupe_strings(
+        [
+            *[
+                str(as_object(item.get("artifact_context")).get("source_name"))
+                for item in related
+                if isinstance(item.get("artifact_context"), dict)
+            ],
+            *([current_source] if current_source else []),
+        ]
+    )
     source_identity_patterns = _source_identity_patterns_from_contexts(contexts)
     source_pattern = source_identity_patterns[0] if source_identity_patterns else _source_pattern_from_repeated_names(source_names)
     if not source_pattern:

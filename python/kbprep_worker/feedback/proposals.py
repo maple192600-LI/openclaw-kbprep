@@ -2,7 +2,6 @@
 
 import re
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import uuid4
 
 from ..envelope import fail, ok
@@ -37,6 +36,7 @@ def _accept_proposal(data: dict) -> None:
     )
     if not selected:
         fail("E_INPUT_NOT_FOUND", f"proposal not found: {wanted}")
+        raise AssertionError("unreachable")
     validate_rule_proposal(selected, str(proposed_path))
     rejected_existing = _read_jsonl(rejected_path) if rejected_path.exists() else []
     if any(item.get("id") == selected.get("id") for item in rejected_existing):
@@ -103,6 +103,7 @@ def _reject_proposal(data: dict) -> None:
     )
     if not selected:
         fail("E_INPUT_NOT_FOUND", f"proposal not found: {wanted}")
+        raise AssertionError("unreachable")
     validate_rule_proposal(selected, str(proposed_path))
 
     accepted_existing = _read_jsonl(accepted_path) if accepted_path.exists() else []
@@ -145,6 +146,7 @@ def _examples(
     examples = _string_list(data.get("examples"))
     if examples:
         return examples
+    sources: tuple[str, ...]
     if action == "discard":
         sources = ("discarded", "review_needed")
     elif action == "protect":

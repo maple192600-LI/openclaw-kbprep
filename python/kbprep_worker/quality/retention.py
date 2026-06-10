@@ -3,7 +3,6 @@
 import re
 from pathlib import Path
 
-from .cleanup_safety import _is_image_block
 from .markdown_signals import _extract_image_sources
 
 DETAIL_SIGNAL_PATTERNS = {
@@ -112,8 +111,8 @@ def _is_valid_standalone_svg(path: Path) -> bool:
     has_height = bool(re.search(r"\bheight\s*=\s*(?:\"[^\"]+\"|'[^']+')", attrs, re.IGNORECASE))
     return has_viewbox or (has_width and has_height)
 
-def _detail_retention_stats(blocks: list[dict]) -> dict:
-    stats = {
+def _detail_retention_stats(blocks: list[dict]) -> dict[str, dict[str, int] | list[str]]:
+    stats: dict[str, dict[str, int] | list[str]] = {
         category: {
             "total_blocks": 0,
             "kept_blocks": 0,
@@ -130,7 +129,7 @@ def _detail_retention_stats(blocks: list[dict]) -> dict:
         if not categories:
             continue
 
-        status = block.get("status", "unclassified")
+        status = str(block.get("status", "unclassified"))
         status_key = {
             "keep": "kept_blocks",
             "evidence": "evidence_blocks",
@@ -139,9 +138,11 @@ def _detail_retention_stats(blocks: list[dict]) -> dict:
         }.get(status)
 
         for category in categories:
-            stats[category]["total_blocks"] += 1
-            if status_key:
-                stats[category][status_key] += 1
+            category_stats = stats[category]
+            assert isinstance(category_stats, dict)
+            category_stats["total_blocks"] += 1
+            if isinstance(status_key, str):
+                category_stats[status_key] += 1
 
         if status == "discard" and STRICT_DETAIL_CATEGORIES.intersection(categories):
             if "link" in categories and not (STRICT_DETAIL_CATEGORIES - {"link"}).intersection(categories):
@@ -153,10 +154,11 @@ def _detail_retention_stats(blocks: list[dict]) -> dict:
     return stats
 
 def _detail_categories(block: dict) -> set[str]:
-    text = block.get("text", "")
+    text = str(block.get("text", ""))
     categories: set[str] = set()
 
-    mapped_type = DETAIL_BLOCK_TYPES.get(block.get("type"))
+    block_type = block.get("type")
+    mapped_type = DETAIL_BLOCK_TYPES.get(block_type) if isinstance(block_type, str) else None
     if mapped_type:
         categories.add(mapped_type)
 

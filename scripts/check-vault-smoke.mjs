@@ -34,6 +34,7 @@ runAnalyzeOnly("unsupported_media", samples.unsupportedMedia);
 runPrepareExpectedPass("markdown_plain", samples.markdownPlain);
 runMarkdownMissingAssetExpectedFail(samples.markdownWithMissingAssets);
 runSyntheticMarkdownWithAsset(samples.markdownPlain, samples.imageAsset);
+runSyntheticMarkdownRepairLoop(samples.markdownPlain, samples.imageAsset);
 for (const [name, sample] of [
   ["pdf_text_layer", samples.pdf],
   ["pptx_office_xml", samples.pptx],
@@ -114,6 +115,31 @@ function runSyntheticMarkdownWithAsset(textSource, imageSource) {
   }
   assertSuccessfulOutput("markdown_with_assets", outDir);
   record("markdown_with_assets", input, "pass", { output: outDir, sourceText: textSource, sourceImage: imageSource });
+}
+
+function runSyntheticMarkdownRepairLoop(textSource, imageSource) {
+  const inputDir = path.join(workRoot, "input-markdown-repair-loop");
+  const repairAssetsDir = path.join(inputDir, "vault-text-with-vault-image.assets", "assets");
+  mkdirSync(repairAssetsDir, { recursive: true });
+  const text = readFileSync(textSource, "utf8").split(/\r?\n/).slice(0, 80).join("\n");
+  const imageName = path.basename(imageSource);
+  copyFileSync(imageSource, path.join(repairAssetsDir, imageName));
+  const input = path.join(inputDir, "vault-text-with-vault-image.md");
+  writeFileSync(input, `${text}\n\n![vault image](assets/${imageName})\n`, "utf8");
+  const outDir = path.join(workRoot, "out-markdown-repair-loop");
+  const result = runCli("prepare", ["--input", input, "--output", outDir, "--repair-loop", "--force", "--artifact-policy", "final_only"]);
+  if (result.status !== 0) {
+    fail(`markdown_repair_loop_assets prepare failed unexpectedly:\n${result.stdout || result.stderr}`);
+  }
+  assertSuccessfulOutput("markdown_repair_loop_assets", outDir);
+  const latest = JSON.parse(readFileSync(path.join(outDir, "latest.json"), "utf8"));
+  const runDir = path.join(outDir, "runs", latest.run_id);
+  for (const artifact of ["failure_diagnosis.json", "repair_plan.md", "repair_actions.json"]) {
+    if (!existsSync(path.join(runDir, artifact))) {
+      fail(`markdown_repair_loop_assets missing repair artifact: ${artifact}`);
+    }
+  }
+  record("markdown_repair_loop_assets", input, "pass", { output: outDir, sourceText: textSource, sourceImage: imageSource });
 }
 
 function runBatchSmoke(sources) {

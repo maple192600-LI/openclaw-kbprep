@@ -4,10 +4,8 @@ Splits blocks into Obsidian-manageable chunks with full traceability.
 
 Supports pdf_like, markdown_note, subtitle_transcript, and generic block splitting.
 """
-import hashlib
 import json
 import logging
-import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
