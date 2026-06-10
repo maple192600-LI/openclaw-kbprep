@@ -164,6 +164,13 @@ def rich_html_to_markdown(
     def clean(value: str) -> str:
         return re.sub(r"\s+", " ", value or "").strip()
 
+    def attr_text(value: object) -> str:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (list, tuple)):
+            return " ".join(str(item) for item in value)
+        return "" if value is None else str(value)
+
     page_title = clean(soup.title.get_text(" ", strip=True)) if soup.title else ""
     asset_stem = page_title or source_stem
 
@@ -187,12 +194,12 @@ def rich_html_to_markdown(
             inner = node.get_text("", strip=True)
             return f"`{inner}`" if inner else ""
         if name == "a":
-            href = clean(node.get("href", ""))
+            href = clean(attr_text(node.get("href", "")))
             label = clean(" ".join(inline(c) for c in node.children)) or clean(node.get_text(" ", strip=True)) or href
             return f"[{label}]({href})" if href else label
         if name == "img":
-            alt = clean(node.get("alt") or node.get("title") or "")
-            src = clean(node.get("src", ""))
+            alt = clean(attr_text(node.get("alt") or node.get("title") or ""))
+            src = clean(attr_text(node.get("src", "")))
             if not src:
                 return alt
             if src.startswith("assets/logos/"):
@@ -244,7 +251,7 @@ def rich_html_to_markdown(
 
     def svg_to_md(svg: Tag) -> str:
         nonlocal svg_counter
-        label = clean(svg.get("aria-label") or "")
+        label = clean(attr_text(svg.get("aria-label") or ""))
         title = svg.find("title")
         desc = svg.find("desc")
         if not label and title:

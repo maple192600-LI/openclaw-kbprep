@@ -17,7 +17,7 @@ class _JsonlFileLock:
         self.handle = self.path.open("a+b")
         handle = self.handle
         if os.name == "nt":
-            import msvcrt
+            msvcrt: Any = __import__("msvcrt")
             handle.seek(0)
             msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
         else:
@@ -30,7 +30,7 @@ class _JsonlFileLock:
             return
         handle = self.handle
         if os.name == "nt":
-            import msvcrt
+            msvcrt: Any = __import__("msvcrt")
             handle.seek(0)
             msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
         else:
