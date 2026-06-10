@@ -1,5 +1,23 @@
 import { spawnSync } from "node:child_process";
 
+const protectedDocsCheck = spawnSync(process.execPath, ["scripts/check-protected-docs.mjs"], {
+  encoding: "utf-8",
+});
+
+if (protectedDocsCheck.status !== 0) {
+  process.stderr.write(protectedDocsCheck.stderr || protectedDocsCheck.stdout || String(protectedDocsCheck.error || ""));
+  process.exit(protectedDocsCheck.status ?? 1);
+}
+
+const governanceCheck = spawnSync(process.execPath, ["scripts/check-project-governance.mjs"], {
+  encoding: "utf-8",
+});
+
+if (governanceCheck.status !== 0) {
+  process.stderr.write(governanceCheck.stderr || governanceCheck.stdout || String(governanceCheck.error || ""));
+  process.exit(governanceCheck.status ?? 1);
+}
+
 const matrixCheck = spawnSync(process.execPath, ["scripts/check-capability-matrix.mjs"], {
   encoding: "utf-8",
 });
@@ -97,6 +115,9 @@ const requiredFiles = [
   "docs/quality-loop.md",
   "docs/feedback-learning.md",
   "docs/hardcoded-cleaning-inventory.md",
+  "docs/kbprep-core-flow-design.md",
+  "docs/kbprep-development-implementation-plan.md",
+  "docs/kbprep-full-flowchart.html",
   "docs/install/claude-code.md",
   "docs/install/codex.md",
   "docs/install/openclaw.md",

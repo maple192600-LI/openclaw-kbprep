@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="KBPrep 完整流程图白板版：从资料输入到规则字典迭代的完整可视化流程。">
+  <title>KBPrep 完整流程图白板版</title>
+  <style>
+    :root {
+      --ink: #20252b;
+      --muted: #77818d;
+      --line: #b9bfc6;
+      --soft-line: #e6e8eb;
+      --panel: rgba(255, 255, 255, .92);
+      --accent: #111827;
+      --warn: #9b3d35;
+      --ok: #2f6f5f;
+      --zoom: 1;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      color: var(--ink);
+      background: #fafafa;
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--soft-line);
+      background: rgba(255, 255, 255, .94);
+      backdrop-filter: blur(12px);
+    }
+
+    .brand {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 900;
+    }
+
+    h1 {
+      margin: 0;
+      color: var(--accent);
+      font-size: clamp(18px, 2vw, 28px);
+      line-height: 1.12;
+    }
+
+    .subtitle {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tools {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .search {
+      width: 260px;
+      height: 36px;
+      padding: 0 12px;
+      border: 1px solid #d5d8dc;
+      border-radius: 999px;
+      background: #fff;
+      color: var(--ink);
+      outline: none;
+    }
+
+    .search:focus {
+      border-color: var(--accent);
+    }
+
+    .tool-button {
+      min-width: 36px;
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 12px;
+      border: 1px solid #d5d8dc;
+      border-radius: 999px;
+      background: #fff;
+      color: var(--accent);
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    .tool-button:hover {
+      border-color: #9ba3ad;
+      background: #f6f6f6;
+    }
+
+    .zoom-readout {
+      min-width: 54px;
+      color: var(--muted);
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .viewport {
+      position: relative;
+      overflow: auto;
+      cursor: grab;
+      background:
+        radial-gradient(circle at 1px 1px, #e8eaed 1px, transparent 0) 0 0 / 28px 28px,
+        #fff;
+    }
+
+    .viewport.dragging {
+      cursor: grabbing;
+    }
+
+    .scale-shell {
+      position: relative;
+      width: 4460px;
+      height: 4780px;
+    }
+
+    .canvas {
+      position: relative;
+      width: 4460px;
+      height: 4780px;
+      transform: scale(var(--zoom));
+      transform-origin: top left;
+    }
+
+    .edge-layer {
+      position: absolute;
+      inset: 0;
+      width: 4460px;
+      height: 4780px;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .edge {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 1.35;
+      opacity: .95;
+    }
+
+    .edge.loop {
+      stroke: #a9aeb5;
+      stroke-dasharray: 7 7;
+    }
+
+    .edge.pass {
+      stroke: var(--ok);
+    }
+
+    .edge.fail {
+      stroke: var(--warn);
+    }
+
+    .edge-label {
+      position: absolute;
+      z-index: 4;
+      padding: 2px 7px;
+      border: 1px solid #e0e2e5;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .94);
+      color: #58616c;
+      font-size: 12px;
+      line-height: 1.25;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .node {
+      position: absolute;
+      z-index: 5;
+      width: 172px;
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 7px 10px;
+      border: 1px solid #d8dbe0;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, .98);
+      color: #242a31;
+      text-align: center;
+      line-height: 1.28;
+      font-size: 13px;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(18, 24, 30, .045);
+    }
+
+    .node.main {
+      border-color: #c8ccd2;
+      background: #fff;
+      font-weight: 900;
+      box-shadow: 0 4px 12px rgba(18, 24, 30, .06);
+    }
+
+    .node.long {
+      width: 230px;
+    }
+
+    .node.wide {
+      width: 292px;
+    }
+
+    .node.decision {
+      width: 156px;
+      height: 86px;
+      padding: 16px 20px;
+      border-color: #d9dce0;
+      clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+      background: #fff;
+      box-shadow: none;
+    }
+
+    .node.terminal {
+      border-color: #e2d0cb;
+      background: #fffafa;
+      color: #47322e;
+    }
+
+    .node.highlight {
+      border-color: #111827;
+      outline: 5px solid rgba(250, 204, 21, .32);
+      z-index: 8;
+    }
+
+    .node.dimmed {
+      opacity: .24;
+    }
+
+    .stage-label {
+      position: absolute;
+      z-index: 3;
+      padding: 5px 9px;
+      border: 1px solid #e4e6e9;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .86);
+      color: #6b7480;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .help-card {
+      position: absolute;
+      right: 22px;
+      bottom: 22px;
+      z-index: 15;
+      width: min(360px, calc(100% - 44px));
+      padding: 14px 16px;
+      border: 1px solid #dfe2e6;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .9);
+      box-shadow: 0 12px 28px rgba(18, 24, 30, .08);
+      color: #4b5561;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .help-card strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #111827;
+      font-size: 14px;
+    }
+
+    @media (max-width: 960px) {
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .tools {
+        justify-content: flex-start;
+      }
+
+      .search {
+        width: min(100%, 300px);
+      }
+
+      .help-card {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">KB</div>
+        <div>
+          <h1>KBPrep 完整流程图</h1>
+          <div class="subtitle">白板式全链路：先转换、验转换、再分块清洗、逐块验收、合并发布、反馈进规则库</div>
+        </div>
+      </div>
+      <div class="tools" aria-label="流程图控制">
+        <input class="search" id="searchBox" type="search" placeholder="搜索节点：转换质量、分块、规则">
+        <button class="tool-button" id="prevMatch" type="button" title="上一个匹配">↑</button>
+        <button class="tool-button" id="nextMatch" type="button" title="下一个匹配">↓</button>
+        <button class="tool-button" id="zoomOut" type="button" title="缩小">−</button>
+        <span class="zoom-readout" id="zoomReadout">100%</span>
+        <button class="tool-button" id="zoomIn" type="button" title="放大">＋</button>
+        <button class="tool-button" id="fitAll" type="button">全图</button>
+        <button class="tool-button" id="fitWidth" type="button">适宽</button>
+        <button class="tool-button" id="readMode" type="button">阅读</button>
+        <button class="tool-button" id="fullScreen" type="button">全屏</button>
+      </div>
+    </header>
+
+    <main class="viewport" id="viewport" aria-label="KBPrep 完整流程图画布">
+      <div class="scale-shell" id="scaleShell">
+        <div class="canvas" id="canvas">
+          <svg class="edge-layer" id="edgeLayer" aria-hidden="true">
+            <defs>
+              <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+                <path d="M1,1 L8,5 L1,9 Z" fill="#b9bfc6"></path>
+              </marker>
+              <marker id="arrowPass" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+                <path d="M1,1 L8,5 L1,9 Z" fill="#2f6f5f"></path>
+              </marker>
+              <marker id="arrowFail" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+                <path d="M1,1 L8,5 L1,9 Z" fill="#9b3d35"></path>
+              </marker>
+            </defs>
+          </svg>
+          <div id="stageLayer"></div>
+          <div id="labelLayer"></div>
+          <div id="nodeLayer"></div>
+        </div>
+      </div>
+      <aside class="help-card">
+        <strong>怎么读这张图</strong>
+        从上往下看主线；遇到菱形就是判断；红色线表示不过关回头修；虚线表示复跑或回到前面阶段。拖动画布可移动，搜索可定位节点。
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const NODE_LABELS = {
+      A: "用户给资料", B: "入口接收", C: "识别来源",
+      C1: "本地文件", C2: "文件夹批量", C3: "网页链接", C4: "平台链接", C5: "音频视频", C6: "图片或扫描件",
+      D: "识别格式和基础信息", E: "选择转换路线",
+      E1: "可复制文字：直接提取", E2: "办公文档：文档转换", E3: "扫描件或图片：图片文字识别", E4: "音频视频：提字幕或转文字", E5: "网页链接：下载或抓取正文", E6: "格式未知：生成问题说明",
+      F: "转成基础 Markdown", Z1: "反馈用户：当前无法可靠转换",
+      G: "转换质量检测", G1: "文字是否乱码或空白", G2: "标题章节是否保留", G3: "表格代码图片是否丢失", G4: "页码顺序是否正常", G5: "字幕时间轴是否连续", G6: "输出量是否明显异常",
+      H: "转换质量是否合格", I: "定位转换问题", I1: "工具选错：换工具", I2: "过程打断：删除坏结果重新转", I3: "原文件质量差：记录原文件问题", I4: "现有工具不支持：记录能力缺口", I5: "参数不合适：调整转换参数", Z2: "输出问题说明和处理建议",
+      J: "分析 Markdown 结构和规模", J1: "统计文字量", J2: "识别标题层级", J3: "识别章节关系", J4: "识别页码关系", J5: "识别段落和表格", J6: "识别字幕时间轴",
+      K: "是小资料还是大资料", L: "整体进入内容理解", M: "按自然结构分块",
+      M1: "按标题分块", M2: "按章节分块", M3: "按页码分块", M4: "按段落分块", M5: "按字幕时间轴分块", M6: "保护表格、代码、步骤不被切碎",
+      N: "分块进入内容理解", O: "判断资料类型",
+      O1: "课程资料", O2: "报告资料", O3: "网页文章", O4: "电子书", O5: "访谈或转录稿", O6: "代码或技术资料", O7: "混合资料或未知资料",
+      P: "选择清洗规则和保护规则", P1: "通用清洗规则", P2: "资料类型规则", P3: "来源专属规则", P4: "用户已确认规则", P5: "保护规则：表格、代码、案例、步骤、参数、链接",
+      Q: "逐块清洗", Q1: "删除广告包装", Q2: "删除二维码和入群引导", Q3: "删除重复页眉页脚", Q4: "删除无意义口播", Q5: "保留正文、案例、方法、步骤", Q6: "保留表格、代码、图片说明、关键数字",
+      R: "分块质量检查", R1: "有没有误删正文", R2: "有没有广告残留", R3: "有没有表格代码断裂", R4: "有没有步骤缺失", R5: "有没有上下文被切坏", R6: "有没有规则误伤",
+      S: "当前分块是否过关", T: "定位失败原因", T1: "转换问题", T2: "切分问题", T3: "资料类型判断问题", T4: "清洗规则太弱", T5: "清洗规则太猛", T6: "字典覆盖不足",
+      U: "生成修复任务", V: "生成规则或字典提案", W: "复跑受影响分块",
+      X: "合并前整体检查", X1: "检查分块顺序", X2: "检查章节连续性", X3: "检查前后衔接", X4: "检查内容是否缺失", X5: "检查是否需要证据内修复",
+      Y: "整体是否连贯完整", Y1: "基于原文证据修复衔接", AA: "按原分块顺序合并", AB: "最终质量检查",
+      AB1: "正文完整", AB2: "噪音清除", AB3: "结构通顺", AB4: "来源可追踪", AB5: "规则改进已记录",
+      AC: "最终是否通过", AD: "输出交付物",
+      AD1: "最终 Markdown", AD2: "被删除内容清单", AD3: "待确认内容清单", AD4: "质量报告", AD5: "分块记录", AD6: "规则改进建议",
+      AE: "用户复查", AF: "用户是否有反馈", AG: "本次处理完成", AH: "把反馈变成规则或字典提案",
+      AI: "确认适用范围：资料类型、来源、污染模式、保护模式", AJ: "反例验证，避免误伤其他资料", AK: "进入长期规则库", AL: "后续同类资料自动复用"
+    };
+
+    const MAIN_NODES = new Set(["A", "B", "C", "D", "E", "F", "G", "I", "J", "M", "N", "O", "P", "Q", "R", "T", "U", "V", "W", "X", "AA", "AB", "AD", "AE", "AH", "AI", "AJ", "AK"]);
+    const DECISIONS = new Set(["H", "K", "S", "Y", "AC", "AF"]);
+    const TERMINALS = new Set(["Z1", "Z2", "AG", "AL"]);
+
+    const RANKS = [
+      ["A"], ["B"], ["C"], ["C1", "C2", "C3", "C4", "C5", "C6"], ["D"], ["E"],
+      ["E1", "E2", "E3", "E4", "E5", "E6"], ["F", "Z1"], ["G"],
+      ["G1", "G2", "G3", "G4", "G5", "G6"], ["H"], ["I", "J"],
+      ["I1", "I2", "I3", "I4", "I5"], ["Z2"],
+      ["J1", "J2", "J3", "J4", "J5", "J6"], ["K"], ["L", "M"],
+      ["M1", "M2", "M3", "M4", "M5", "M6"], ["N"], ["O"],
+      ["O1", "O2", "O3", "O4", "O5", "O6", "O7"], ["P"],
+      ["P1", "P2", "P3", "P4", "P5"], ["Q"], ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6"],
+      ["R"], ["R1", "R2", "R3", "R4", "R5", "R6"], ["S"], ["T", "X"],
+      ["T1", "T2", "T3", "T4", "T5", "T6", "X1", "X2", "X3", "X4", "X5"],
+      ["U", "Y"], ["V", "Y1", "AA"], ["W", "AB"], ["AB1", "AB2", "AB3", "AB4", "AB5"],
+      ["AC"], ["AD"], ["AD1", "AD2", "AD3", "AD4", "AD5", "AD6"], ["AE"], ["AF"],
+      ["AG", "AH"], ["AI"], ["AJ"], ["AK"], ["AL"]
+    ];
+
+    const EDGES = [
+      ["A", "B"], ["B", "C"],
+      ["C", "C1"], ["C", "C2"], ["C", "C3"], ["C", "C4"], ["C", "C5"], ["C", "C6"],
+      ["C1", "D"], ["C2", "D"], ["C3", "D"], ["C4", "D"], ["C5", "D"], ["C6", "D"],
+      ["D", "E"], ["E", "E1"], ["E", "E2"], ["E", "E3"], ["E", "E4"], ["E", "E5"], ["E", "E6"],
+      ["E1", "F"], ["E2", "F"], ["E3", "F"], ["E4", "F"], ["E5", "F"], ["E6", "Z1"], ["F", "G"],
+      ["G", "G1"], ["G", "G2"], ["G", "G3"], ["G", "G4"], ["G", "G5"], ["G", "G6"],
+      ["G1", "H"], ["G2", "H"], ["G3", "H"], ["G4", "H"], ["G5", "H"], ["G6", "H"],
+      ["H", "I", "不合格", "fail"], ["I", "I1"], ["I", "I2"], ["I", "I3"], ["I", "I4"], ["I", "I5"],
+      ["I1", "E", "", "loop"], ["I2", "E", "", "loop"], ["I5", "E", "", "loop"], ["I3", "Z2"], ["I4", "Z2"],
+      ["H", "J", "合格", "pass"],
+      ["J", "J1"], ["J", "J2"], ["J", "J3"], ["J", "J4"], ["J", "J5"], ["J", "J6"],
+      ["J1", "K"], ["J2", "K"], ["J3", "K"], ["J4", "K"], ["J5", "K"], ["J6", "K"],
+      ["K", "L", "小资料", "pass"], ["K", "M", "大资料", "fail"],
+      ["M", "M1"], ["M", "M2"], ["M", "M3"], ["M", "M4"], ["M", "M5"], ["M", "M6"],
+      ["M1", "N"], ["M2", "N"], ["M3", "N"], ["M4", "N"], ["M5", "N"], ["M6", "N"],
+      ["L", "O"], ["N", "O"],
+      ["O", "O1"], ["O", "O2"], ["O", "O3"], ["O", "O4"], ["O", "O5"], ["O", "O6"], ["O", "O7"],
+      ["O1", "P"], ["O2", "P"], ["O3", "P"], ["O4", "P"], ["O5", "P"], ["O6", "P"], ["O7", "P"],
+      ["P", "P1"], ["P", "P2"], ["P", "P3"], ["P", "P4"], ["P", "P5"],
+      ["P1", "Q"], ["P2", "Q"], ["P3", "Q"], ["P4", "Q"], ["P5", "Q"],
+      ["Q", "Q1"], ["Q", "Q2"], ["Q", "Q3"], ["Q", "Q4"], ["Q", "Q5"], ["Q", "Q6"],
+      ["Q1", "R"], ["Q2", "R"], ["Q3", "R"], ["Q4", "R"], ["Q5", "R"], ["Q6", "R"],
+      ["R", "R1"], ["R", "R2"], ["R", "R3"], ["R", "R4"], ["R", "R5"], ["R", "R6"],
+      ["R1", "S"], ["R2", "S"], ["R3", "S"], ["R4", "S"], ["R5", "S"], ["R6", "S"],
+      ["S", "T", "不过关", "fail"], ["T", "T1"], ["T", "T2"], ["T", "T3"], ["T", "T4"], ["T", "T5"], ["T", "T6"],
+      ["T1", "U"], ["T2", "U"], ["T3", "U"], ["T4", "U"], ["T5", "U"], ["T6", "U"],
+      ["U", "V"], ["V", "W"], ["W", "R", "", "loop"], ["S", "X", "过关", "pass"],
+      ["X", "X1"], ["X", "X2"], ["X", "X3"], ["X", "X4"], ["X", "X5"],
+      ["X1", "Y"], ["X2", "Y"], ["X3", "Y"], ["X4", "Y"], ["X5", "Y"],
+      ["Y", "Y1", "不完整", "fail"], ["Y1", "X", "", "loop"], ["Y", "AA", "完整", "pass"],
+      ["AA", "AB"], ["AB", "AB1"], ["AB", "AB2"], ["AB", "AB3"], ["AB", "AB4"], ["AB", "AB5"],
+      ["AB1", "AC"], ["AB2", "AC"], ["AB3", "AC"], ["AB4", "AC"], ["AB5", "AC"],
+      ["AC", "T", "不通过", "loop"], ["AC", "AD", "通过", "pass"],
+      ["AD", "AD1"], ["AD", "AD2"], ["AD", "AD3"], ["AD", "AD4"], ["AD", "AD5"], ["AD", "AD6"],
+      ["AD1", "AE"], ["AD2", "AE"], ["AD3", "AE"], ["AD4", "AE"], ["AD5", "AE"], ["AD6", "AE"],
+      ["AE", "AF"], ["AF", "AG", "没有", "pass"], ["AF", "AH", "有", "fail"],
+      ["AH", "AI"], ["AI", "AJ"], ["AJ", "AK"], ["AK", "AL"]
+    ];
+
+    const STAGES = [
+      ["输入和识别", 0], ["转换路线", 5], ["转换质检", 8], ["结构分块", 14],
+      ["内容和规则", 19], ["清洗验收", 23], ["合并发布", 28], ["反馈进化", 35]
+    ];
+
+    const nodeLayer = document.getElementById("nodeLayer");
+    const edgeLayer = document.getElementById("edgeLayer");
+    const labelLayer = document.getElementById("labelLayer");
+    const stageLayer = document.getElementById("stageLayer");
+    const viewport = document.getElementById("viewport");
+    const canvas = document.getElementById("canvas");
+    const scaleShell = document.getElementById("scaleShell");
+    const zoomReadout = document.getElementById("zoomReadout");
+    const searchBox = document.getElementById("searchBox");
+    const nodes = new Map();
+    let zoom = 1;
+    let matches = [];
+    let matchIndex = 0;
+
+    function buildPositions() {
+      const center = 2230;
+      const gapX = 245;
+      const gapY = 108;
+      const top = 52;
+      const pos = {};
+      RANKS.forEach((rank, rankIndex) => {
+        const y = top + rankIndex * gapY;
+        const start = center - ((rank.length - 1) * gapX) / 2;
+        rank.forEach((id, i) => {
+          pos[id] = { x: Math.round(start + i * gapX), y };
+        });
+      });
+      pos.I.x -= 490; pos.I.y += 20;
+      pos.J.x += 300;
+      ["I1", "I2", "I3", "I4", "I5"].forEach((id, i) => {
+        pos[id].x = 800 + i * 210;
+        pos[id].y += 18;
+      });
+      pos.Z2.x = 1230;
+      pos.Z2.y += 10;
+      pos.L.x -= 260;
+      pos.M.x += 260;
+      ["T", "T1", "T2", "T3", "T4", "T5", "T6", "U", "V", "W"].forEach((id) => {
+        pos[id].x -= 560;
+      });
+      ["X", "X1", "X2", "X3", "X4", "X5", "Y", "Y1", "AA", "AB", "AB1", "AB2", "AB3", "AB4", "AB5", "AC"].forEach((id) => {
+        pos[id].x += 420;
+      });
+      ["AD", "AD1", "AD2", "AD3", "AD4", "AD5", "AD6", "AE", "AF", "AG", "AH", "AI", "AJ", "AK", "AL"].forEach((id) => {
+        pos[id].x += 520;
+      });
+      return pos;
+    }
+
+    function nodeClass(id, label) {
+      const classes = ["node"];
+      if (MAIN_NODES.has(id)) classes.push("main");
+      if (DECISIONS.has(id)) classes.push("decision");
+      if (TERMINALS.has(id)) classes.push("terminal");
+      if (label.length > 18) classes.push("long");
+      if (label.length > 26) classes.push("wide");
+      return classes.join(" ");
+    }
+
+    function renderStages(pos) {
+      STAGES.forEach(([label, rankIndex]) => {
+        const el = document.createElement("div");
+        el.className = "stage-label";
+        el.textContent = label;
+        el.style.left = "60px";
+        el.style.top = `${52 + rankIndex * 108}px`;
+        stageLayer.appendChild(el);
+      });
+    }
+
+    function renderNodes() {
+      const pos = buildPositions();
+      Object.entries(NODE_LABELS).forEach(([id, label]) => {
+        const p = pos[id];
+        const el = document.createElement("div");
+        el.className = nodeClass(id, label);
+        el.id = `node-${id}`;
+        el.dataset.id = id;
+        el.dataset.label = label;
+        el.textContent = label;
+        el.style.left = `${p.x}px`;
+        el.style.top = `${p.y}px`;
+        nodeLayer.appendChild(el);
+        nodes.set(id, { id, label, x: p.x, y: p.y, el });
+      });
+      renderStages(pos);
+    }
+
+    function box(id) {
+      const node = nodes.get(id);
+      return {
+        x: node.x,
+        y: node.y,
+        w: node.el.offsetWidth,
+        h: node.el.offsetHeight
+      };
+    }
+
+    function anchor(id, side) {
+      const b = box(id);
+      if (side === "top") return { x: b.x + b.w / 2, y: b.y };
+      if (side === "bottom") return { x: b.x + b.w / 2, y: b.y + b.h };
+      if (side === "left") return { x: b.x, y: b.y + b.h / 2 };
+      return { x: b.x + b.w, y: b.y + b.h / 2 };
+    }
+
+    function edgePath(from, to, kind) {
+      const fb = box(from);
+      const tb = box(to);
+      const forward = tb.y > fb.y - 18;
+      if (kind === "loop" || !forward) {
+        const s = anchor(from, fb.x > tb.x ? "left" : "right");
+        const t = anchor(to, fb.x > tb.x ? "left" : "right");
+        const bend = fb.x > tb.x ? Math.min(s.x, t.x) - 210 : Math.max(s.x, t.x) + 210;
+        return `M ${s.x} ${s.y} C ${bend} ${s.y}, ${bend} ${t.y}, ${t.x} ${t.y}`;
+      }
+      const s = anchor(from, "bottom");
+      const t = anchor(to, "top");
+      const dy = Math.max(34, (t.y - s.y) * .52);
+      return `M ${s.x} ${s.y} C ${s.x} ${s.y + dy}, ${t.x} ${t.y - dy}, ${t.x} ${t.y}`;
+    }
+
+    function marker(kind) {
+      if (kind === "pass") return "url(#arrowPass)";
+      if (kind === "fail" || kind === "loop") return "url(#arrowFail)";
+      return "url(#arrow)";
+    }
+
+    function renderEdges() {
+      EDGES.forEach(([from, to, text, kind]) => {
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("class", `edge ${kind || ""}`);
+        path.setAttribute("d", edgePath(from, to, kind));
+        path.setAttribute("marker-end", marker(kind));
+        edgeLayer.appendChild(path);
+
+        if (text) {
+          const a = box(from);
+          const b = box(to);
+          const label = document.createElement("div");
+          label.className = "edge-label";
+          label.textContent = text;
+          label.style.left = `${(a.x + b.x) / 2 + 82}px`;
+          label.style.top = `${(a.y + b.y) / 2 + 6}px`;
+          labelLayer.appendChild(label);
+        }
+      });
+    }
+
+    function setZoom(next, keepCenter = true) {
+      const prev = zoom;
+      zoom = Math.max(.12, Math.min(2.2, next));
+      document.documentElement.style.setProperty("--zoom", zoom.toFixed(3));
+      scaleShell.style.width = `${Math.ceil(canvas.offsetWidth * zoom)}px`;
+      scaleShell.style.height = `${Math.ceil(canvas.offsetHeight * zoom)}px`;
+      zoomReadout.textContent = `${Math.round(zoom * 100)}%`;
+      if (keepCenter && prev !== zoom) {
+        const ratio = zoom / prev;
+        viewport.scrollLeft = (viewport.scrollLeft + viewport.clientWidth / 2) * ratio - viewport.clientWidth / 2;
+        viewport.scrollTop = (viewport.scrollTop + viewport.clientHeight / 2) * ratio - viewport.clientHeight / 2;
+      }
+    }
+
+    function fitAll() {
+      const zx = (viewport.clientWidth - 36) / canvas.offsetWidth;
+      const zy = (viewport.clientHeight - 36) / canvas.offsetHeight;
+      setZoom(Math.min(zx, zy), false);
+      viewport.scrollLeft = 0;
+      viewport.scrollTop = 0;
+    }
+
+    function fitWidth() {
+      setZoom((viewport.clientWidth - 40) / canvas.offsetWidth, false);
+      viewport.scrollLeft = 0;
+      viewport.scrollTop = 0;
+    }
+
+    function readMode() {
+      setZoom(.9, false);
+      viewport.scrollLeft = Math.max(0, (canvas.offsetWidth * zoom - viewport.clientWidth) / 2);
+      viewport.scrollTop = 0;
+    }
+
+    function scrollToNode(id) {
+      const n = nodes.get(id);
+      if (!n) return;
+      viewport.scrollTo({
+        left: Math.max(0, (n.x + n.el.offsetWidth / 2) * zoom - viewport.clientWidth / 2),
+        top: Math.max(0, (n.y + n.el.offsetHeight / 2) * zoom - viewport.clientHeight / 2),
+        behavior: "smooth"
+      });
+    }
+
+    function runSearch(delta = 0) {
+      const query = searchBox.value.trim().toLowerCase();
+      nodes.forEach((node) => node.el.classList.remove("highlight", "dimmed"));
+      if (!query) {
+        matches = [];
+        matchIndex = 0;
+        return;
+      }
+      matches = [...nodes.values()].filter((node) => node.id.toLowerCase().includes(query) || node.label.toLowerCase().includes(query));
+      nodes.forEach((node) => {
+        if (!matches.includes(node)) node.el.classList.add("dimmed");
+      });
+      matches.forEach((node) => node.el.classList.add("highlight"));
+      if (matches.length) {
+        matchIndex = (matchIndex + delta + matches.length) % matches.length;
+        scrollToNode(matches[matchIndex].id);
+      }
+    }
+
+    function enableDrag() {
+      let active = false;
+      let startX = 0;
+      let startY = 0;
+      let startLeft = 0;
+      let startTop = 0;
+      viewport.addEventListener("pointerdown", (event) => {
+        if (event.target.closest("button, input")) return;
+        active = true;
+        startX = event.clientX;
+        startY = event.clientY;
+        startLeft = viewport.scrollLeft;
+        startTop = viewport.scrollTop;
+        viewport.classList.add("dragging");
+        viewport.setPointerCapture(event.pointerId);
+      });
+      viewport.addEventListener("pointermove", (event) => {
+        if (!active) return;
+        viewport.scrollLeft = startLeft - (event.clientX - startX);
+        viewport.scrollTop = startTop - (event.clientY - startY);
+      });
+      viewport.addEventListener("pointerup", (event) => {
+        active = false;
+        viewport.classList.remove("dragging");
+        viewport.releasePointerCapture(event.pointerId);
+      });
+    }
+
+    renderNodes();
+    renderEdges();
+    enableDrag();
+    document.getElementById("zoomIn").addEventListener("click", () => setZoom(zoom + .12));
+    document.getElementById("zoomOut").addEventListener("click", () => setZoom(zoom - .12));
+    document.getElementById("fitAll").addEventListener("click", fitAll);
+    document.getElementById("fitWidth").addEventListener("click", fitWidth);
+    document.getElementById("readMode").addEventListener("click", readMode);
+    document.getElementById("fullScreen").addEventListener("click", () => {
+      if (document.fullscreenElement) document.exitFullscreen?.();
+      else document.documentElement.requestFullscreen?.();
+    });
+    document.getElementById("prevMatch").addEventListener("click", () => runSearch(-1));
+    document.getElementById("nextMatch").addEventListener("click", () => runSearch(1));
+    searchBox.addEventListener("input", () => {
+      matchIndex = 0;
+      runSearch(0);
+    });
+    window.addEventListener("resize", () => setZoom(zoom, false));
+    setZoom(.48, false);
+    viewport.scrollLeft = Math.max(0, (canvas.offsetWidth * zoom - viewport.clientWidth) / 2);
+    viewport.scrollTop = 0;
+  </script>
+</body>
+</html>
