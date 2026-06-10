@@ -12,6 +12,8 @@ describe("standalone KBPrep CLI adapter", () => {
     expect(result.output).toContain("Usage: kbprep-prepare");
     expect(result.output).toContain("--input <file>");
     expect(result.output).toContain("Default profile standard");
+    expect(result.output).toContain("compatibility template");
+    expect(result.output).not.toContain("legacy course/self-media");
   });
 
   it("describes cleanup as preserving the profile-specific final deliverable", async () => {

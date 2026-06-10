@@ -86,7 +86,7 @@ default is 3.
 
 - Default `--profile standard`: use `latest_outputs.final_md`, the source-side Markdown file beside the source.
 - Explicit `--profile obsidian_kb`: generic Obsidian vault output. Use `latest_outputs.obsidian_dir`, `latest_outputs.obsidian_index`, and `latest_outputs.obsidian_complete`.
-- Explicit `--profile curated_obsidian_kb`: legacy course/self-media Obsidian template. It uses optional template rules such as `obsidian_course_kb` and should only be selected for that document family.
+- Explicit `--profile curated_obsidian_kb`: compatibility Obsidian template for course or self-media document families. It uses optional template rules such as `obsidian_course_kb` and should only be selected for that document family.
 
 Use `kbprep-cleanup --action finalize` only after checking `quality_report.json`, `discarded.md`, and `review_needed.md`. Finalize preserves the final deliverable: `obsidian/` for Obsidian profiles, or source-side Markdown/assets for standard runs.
 

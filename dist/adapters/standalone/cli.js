@@ -25,7 +25,7 @@ const HELP = {
     prepare: [
         "Usage: kbprep-prepare --input <file> --output <dir> [--profile lite|standard|obsidian_kb|curated_obsidian_kb] [--mode rules_only|rules_plus_review_pack] [--source-url <url>] [--source-domain <domain>] [--site-name <name>] [--max-quality-iterations <n>] [--force] [--config-file <file>]",
         "",
-        "Converts one local source file. Default profile standard publishes source-side Markdown; obsidian_kb publishes a generic Obsidian vault; curated_obsidian_kb is an explicit legacy course/self-media template.",
+        "Converts one local source file. Default profile standard publishes source-side Markdown; obsidian_kb publishes a generic Obsidian vault; curated_obsidian_kb is a compatibility template for course or self-media documents.",
     ].join("\n"),
     apply_review: [
         "Usage: kbprep-apply-review --run-dir <dir> --patch-file <json> [--config-file <file>]",

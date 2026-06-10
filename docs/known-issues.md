@@ -32,7 +32,7 @@ This file tracks known product and engineering gaps that are not hidden defects.
 ## Closed Workflow Risks
 
 - Default `standard` delivery publishes source-side Markdown through `latest_outputs.final_md`.
-- Legacy `curated_obsidian_kb` delivery is Obsidian-first: `latest_outputs.final_md` stays `null`, while `latest_outputs.obsidian_dir`, `latest_outputs.obsidian_index`, and `final_artifact_type="obsidian_dir"` identify the final deliverable.
+- Compatibility `curated_obsidian_kb` delivery is Obsidian-first and must be selected explicitly: `latest_outputs.final_md` stays `null`, while `latest_outputs.obsidian_dir`, `latest_outputs.obsidian_index`, and `final_artifact_type="obsidian_dir"` identify the final deliverable.
 - `kbprep-cleanup --action finalize` must preserve the profile-specific final deliverable: `obsidian/` for curated runs, source-side Markdown/assets for standard runs.
 - CLI path safety distinguishes read and write boundaries: absolute `--input` paths are allowed for explicit local source reads, while output/cleanup roots reject filesystem roots and file-like patch/config/feedback inputs are validated before worker dispatch.
 - Service-style deployments can set `KBPREP_CLI_BOUNDARY_DIR` to keep write/run paths inside a fixed boundary without blocking explicit local input reads.

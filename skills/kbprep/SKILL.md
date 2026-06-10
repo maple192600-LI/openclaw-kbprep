@@ -57,7 +57,7 @@ If full conversion dependencies are missing, text-like files may still work, but
 
 ## Language Coverage
 
-KBPrep v0.5 is tuned for Simplified Chinese self-media, course, and knowledge-base material. English support is best-effort and includes English step markers, URLs, CLI flags, prompts, and common subscription/join CTA patterns. Other languages are not yet tested. Check `quality_report.json` `language_detected` before accepting non-Chinese runs.
+KBPrep v0.5 is tuned first for Simplified Chinese local source files and knowledge-base material. Course or self-media cleanup is an optional compatibility template, not the default product direction. English support is best-effort and includes English step markers, URLs, CLI flags, prompts, and common subscription/join CTA patterns. Other languages are not yet tested. Check `quality_report.json` `language_detected` before accepting non-Chinese runs.
 
 ### `kbprep-analyze`
 

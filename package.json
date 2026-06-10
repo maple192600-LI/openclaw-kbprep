@@ -16,6 +16,7 @@
   "scripts": {
     "build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "audit:check": "node scripts/check-audit-remediation.mjs && node scripts/check-thresholds.mjs",
+    "check:guidance-drift": "node scripts/check-guidance-drift.mjs",
     "check:project-governance": "node scripts/check-project-governance.mjs",
     "check:protected-docs": "node scripts/check-protected-docs.mjs",
     "dev:check": "npm run build && npm run audit:check && npm run pack:check",

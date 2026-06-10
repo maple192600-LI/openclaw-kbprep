@@ -18,6 +18,15 @@ if (governanceCheck.status !== 0) {
   process.exit(governanceCheck.status ?? 1);
 }
 
+const guidanceDriftCheck = spawnSync(process.execPath, ["scripts/check-guidance-drift.mjs"], {
+  encoding: "utf-8",
+});
+
+if (guidanceDriftCheck.status !== 0) {
+  process.stderr.write(guidanceDriftCheck.stderr || guidanceDriftCheck.stdout || String(guidanceDriftCheck.error || ""));
+  process.exit(guidanceDriftCheck.status ?? 1);
+}
+
 const matrixCheck = spawnSync(process.execPath, ["scripts/check-capability-matrix.mjs"], {
   encoding: "utf-8",
 });

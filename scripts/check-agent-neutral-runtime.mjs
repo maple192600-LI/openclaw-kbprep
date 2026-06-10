@@ -24,6 +24,7 @@ const namedAgentTerms = [
 
 const allowedFiles = new Set([
   "scripts/check-agent-neutral-runtime.mjs",
+  "scripts/check-guidance-drift.mjs",
 ]);
 
 function collectFiles(relativeRoot) {

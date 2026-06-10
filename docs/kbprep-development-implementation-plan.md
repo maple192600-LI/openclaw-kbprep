@@ -428,7 +428,7 @@ python -m unittest discover -s python/tests
 
 ```bash
 kbprep-analyze --input <sample>
-kbprep-prepare --input <sample> --output-root <out> --force
+kbprep-prepare --input <sample> --output <out> --force
 ```
 
 用户验收时重点看：

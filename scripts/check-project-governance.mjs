@@ -13,6 +13,7 @@ const governanceDocs = [
 ];
 const requiredPackageScripts = [
   "check:protected-docs",
+  "check:guidance-drift",
   "check:project-governance",
   "dev:check",
   "dev:full-check",
