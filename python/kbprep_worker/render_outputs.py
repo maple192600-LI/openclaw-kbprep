@@ -140,7 +140,7 @@ def _render_parts(keep_blocks: list[dict], run_p: Path) -> None:
     for idx, part_blocks in enumerate(parts, start=1):
         part_id = f"part_{idx:03d}"
         part_text = "\n\n".join(_readable_text(b) for b in part_blocks if _readable_text(b))
-        heading_path = next((b.get("heading_path", []) for b in part_blocks if b.get("heading_path")), [])
+        heading_path: list[str] = next((b.get("heading_path", []) for b in part_blocks if b.get("heading_path")), [])
         block_ids = [b.get("block_id") for b in part_blocks]
         content = "\n".join([
             "---",

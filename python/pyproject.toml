@@ -37,23 +37,17 @@ select = ["E9", "F63", "F7", "F82", "F401", "F841", "B904"]
 [tool.mypy]
 python_version = "3.10"
 mypy_path = "python"
-# First-stage typed gate. Keep this list honest and expand it as legacy worker
-# modules are cleaned up instead of hiding broad mypy failures behind ignores.
-files = [
-    "python/kbprep_worker/envelope.py",
-    "python/kbprep_worker/error_codes.py",
-    "python/kbprep_worker/fs_safety.py",
-    "python/kbprep_worker/repair_loop.py",
-    "python/kbprep_worker/supported_formats.py",
-    "python/kbprep_worker/quality/thresholds.py"
-]
-ignore_missing_imports = true
+files = ["python/kbprep_worker"]
 follow_imports = "silent"
 show_error_codes = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 no_implicit_optional = true
-check_untyped_defs = false
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["bs4", "fitz", "psutil", "torch"]
+ignore_missing_imports = true
 
 [build-system]
 requires = ["setuptools>=75.0"]

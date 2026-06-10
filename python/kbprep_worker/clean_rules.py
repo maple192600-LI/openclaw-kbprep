@@ -10,6 +10,7 @@ import logging
 import re
 
 from .rule_loader import LoadedCleaningRules, load_cleaning_rules, rule_matches
+from .rule_schema import CleaningRule
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def _split_promotional_lines(block: dict, rules: LoadedCleaningRules) -> list[di
         return []
 
     kept_lines: list[str] = []
-    promo_lines: list[tuple[str, object]] = []
+    promo_lines: list[tuple[str, CleaningRule]] = []
     for line in text.splitlines():
         stripped = line.strip()
         matched_rule = _matching_promotional_rule(stripped, rules)
@@ -137,7 +138,7 @@ def _split_promotional_lines(block: dict, rules: LoadedCleaningRules) -> list[di
     return derived
 
 
-def _matching_promotional_rule(line: str, rules: LoadedCleaningRules):
+def _matching_promotional_rule(line: str, rules: LoadedCleaningRules) -> CleaningRule | None:
     for rule in rules.promotional_line_rules:
         if rule.action == "protect" and rule_matches(rule, line):
             return rule
@@ -152,7 +153,7 @@ def _matching_promotional_rule(line: str, rules: LoadedCleaningRules):
     return None
 
 
-def _apply_matched_rule(block: dict, matched_rule) -> None:
+def _apply_matched_rule(block: dict, matched_rule: CleaningRule) -> None:
     if matched_rule.action == "protect":
         block["status"] = "keep"
         block["protected"] = True

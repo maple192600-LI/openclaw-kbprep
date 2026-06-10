@@ -150,9 +150,9 @@ def run_quality_check(
 
     # ── Cleaning quality ──────────────────────────────────────────
     total_blocks = len(blocks)
-    status_counts = {}
+    status_counts: dict[str, int] = {}
     for b in blocks:
-        s = b.get("status", "unclassified")
+        s = str(b.get("status", "unclassified"))
         status_counts[s] = status_counts.get(s, 0) + 1
 
     keep_count = status_counts.get("keep", 0)

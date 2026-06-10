@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ..typing_helpers import as_object
 from .artifacts import _read_json_file
 from .patterns import _matches_pattern, _optional_string, _string_list
 
@@ -140,8 +141,8 @@ def _rerun_representative_source(
         "output_root": rerun_plan.get("output_root"),
         "stderr_tail": completed.stderr[-2000:],
     }
-    data_out = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
-    latest_outputs = data_out.get("latest_outputs") if isinstance(data_out.get("latest_outputs"), dict) else {}
+    data_out = as_object(envelope.get("data"))
+    latest_outputs = as_object(data_out.get("latest_outputs"))
     if data_out:
         sample["new_run_dir"] = data_out.get("run_dir")
         sample["cleaned_md"] = latest_outputs.get("cleaned_md")
@@ -257,10 +258,10 @@ def _rerun_after_accept(accepted: dict, rules_dir: Path, data: dict) -> dict:
         "output_root": rerun_plan.get("output_root"),
         "stderr_tail": completed.stderr[-2000:],
     }
-    data_out = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
+    data_out = as_object(envelope.get("data"))
     if data_out:
         verification["run_dir"] = data_out.get("run_dir")
-        latest_outputs = data_out.get("latest_outputs") if isinstance(data_out.get("latest_outputs"), dict) else {}
+        latest_outputs = as_object(data_out.get("latest_outputs"))
         verification["cleaned_md"] = latest_outputs.get("cleaned_md")
         verification["quality_report"] = latest_outputs.get("quality_report")
         verification["strict_errors"] = data_out.get("strict_errors", [])
@@ -285,13 +286,17 @@ def _rerun_plan_from_proposal(proposal: dict) -> dict:
     profile = ""
     if latest_path.exists():
         latest = _read_json_file(latest_path)
-        input_path = latest.get("input_path") if isinstance(latest.get("input_path"), str) else ""
+        latest_input_path = latest.get("input_path")
+        input_path = latest_input_path if isinstance(latest_input_path, str) else ""
     if not input_path and metadata_path.exists():
         metadata = _read_json_file(metadata_path)
-        payload = metadata.get("prepare_payload") if isinstance(metadata.get("prepare_payload"), dict) else {}
-        input_path = payload.get("input_path") if isinstance(payload.get("input_path"), str) else ""
-        output_root = Path(payload.get("output_root")) if isinstance(payload.get("output_root"), str) and payload.get("output_root") else output_root
-        profile = payload.get("profile") if isinstance(payload.get("profile"), str) else ""
+        payload = as_object(metadata.get("prepare_payload"))
+        payload_input_path = payload.get("input_path")
+        input_path = payload_input_path if isinstance(payload_input_path, str) else ""
+        payload_output_root = payload.get("output_root")
+        output_root = Path(payload_output_root) if isinstance(payload_output_root, str) and payload_output_root else output_root
+        payload_profile = payload.get("profile")
+        profile = payload_profile if isinstance(payload_profile, str) else ""
     if not input_path:
         return {"ok": False, "reason": f"latest.json or run_metadata.json did not contain input_path for run: {run_dir}"}
     if not Path(input_path).exists():

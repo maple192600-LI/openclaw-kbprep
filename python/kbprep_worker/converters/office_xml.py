@@ -99,7 +99,7 @@ def pptx_to_markdown(zf: zipfile.ZipFile, run_dir: Path) -> tuple[str, list[str]
 
     slide_names = sorted(
         (name for name in zf.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)),
-        key=lambda name: int(re.search(r"slide(\d+)\.xml", name).group(1)),
+        key=lambda name: number_from_part_name(name, r"slide(\d+)\.xml"),
     )
     sections: list[str] = []
     image_artifacts: list[str] = []
@@ -223,7 +223,7 @@ def xlsx_to_markdown(zf: zipfile.ZipFile) -> str:
     sheet_names = xlsx_sheet_names(zf)
     worksheet_names = sorted(
         (name for name in zf.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", name)),
-        key=lambda name: int(re.search(r"sheet(\d+)\.xml", name).group(1)),
+        key=lambda name: number_from_part_name(name, r"sheet(\d+)\.xml"),
     )
 
     sections: list[str] = []
@@ -333,6 +333,11 @@ def rows_to_markdown_table(rows: list[list[str]]) -> str:
 
 def escape_table_cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ").strip()
+
+
+def number_from_part_name(name: str, pattern: str) -> int:
+    match = re.search(pattern, name)
+    return int(match.group(1)) if match else 0
 
 
 def xml_text(element) -> str:

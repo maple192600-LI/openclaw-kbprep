@@ -35,7 +35,7 @@ def classify_images(
     if converted_path.exists():
         converted_text = converted_path.read_text(encoding="utf-8")
 
-    img_context_map = {}
+    img_context_map: dict[str, str] = {}
     if converted_text:
         img_context_map = _build_image_context_map(converted_text)
 
@@ -49,7 +49,7 @@ def classify_images(
         if block_type not in ("image_evidence", "image_operation", "diagram", "unknown_review"):
             continue
 
-        all_context = []
+        all_context: list[str] = []
         for img in images:
             src = img.get("src", "")
             ctx = img_context_map.get(src, "")
@@ -57,11 +57,14 @@ def classify_images(
                 all_context.append(ctx)
 
         block_text = block.get("text", "")
-        heading_text = " ".join(block.get("heading_path", []))
+        heading_path = block.get("heading_path", [])
+        if not isinstance(heading_path, list):
+            heading_path = []
+        heading_text = " ".join(str(item) for item in heading_path)
         nearby_context = " ".join(all_context)
         combined = block_text + " " + nearby_context + " " + heading_text
 
-        img_type, status, reason = _classify(combined, block.get("heading_path"), rules)
+        img_type, status, reason = _classify(combined, heading_path, rules)
 
         block["image_type"] = img_type
         if block.get("status") != "discard":
@@ -106,7 +109,7 @@ def _build_image_context_map(converted_text: str) -> dict[str, str]:
     return context_map
 
 
-def _classify(text: str, heading_path: list[str] = None, rules: LoadedCleaningRules | None = None) -> tuple[str, str, str]:
+def _classify(text: str, heading_path: list[str] | None = None, rules: LoadedCleaningRules | None = None) -> tuple[str, str, str]:
     """Classify based on combined context text and heading path."""
     if not text.strip():
         return "unknown_image", "review", "no context available"

@@ -156,7 +156,8 @@ def run(data: dict) -> None:
     )
 
     review_applied_at = time.time()
-    previous_quality_loop = previous_quality.get("quality_loop") if isinstance(previous_quality.get("quality_loop"), dict) else {}
+    previous_quality_loop = previous_quality.get("quality_loop")
+    previous_quality_loop = previous_quality_loop if isinstance(previous_quality_loop, dict) else {}
     previous_iteration = previous_quality_loop.get("current_iteration", 1)
     quality_iteration = _positive_int(previous_iteration, 1) + 1
     max_quality_iterations = _positive_int(previous_quality_loop.get("max_iterations"), 3)

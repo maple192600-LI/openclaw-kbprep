@@ -3,13 +3,15 @@
 import json
 from pathlib import Path
 
+from ..typing_helpers import as_object
 from .patterns import _optional_string
 
 def _run_artifacts(run_dir: Path) -> dict:
     quality = _read_json_file(run_dir / "quality_report.json")
     metadata = _read_json_file(run_dir / "run_metadata.json")
-    prepare_payload = metadata.get("prepare_payload") if isinstance(metadata.get("prepare_payload"), dict) else {}
-    input_path = prepare_payload.get("input_path") if isinstance(prepare_payload.get("input_path"), str) else ""
+    prepare_payload = as_object(metadata.get("prepare_payload"))
+    input_path_raw = prepare_payload.get("input_path")
+    input_path = input_path_raw if isinstance(input_path_raw, str) else ""
     source_identity = _metadata_source_identity(metadata, input_path)
     texts = {
         "discarded": _read_text_sample(run_dir / "discarded.md"),

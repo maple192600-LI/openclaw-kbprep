@@ -78,6 +78,7 @@ def main() -> None:
     handler = dispatch.get(args.command)
     if handler is None:
         fail("E_INTERNAL", f"Unknown command: {args.command}")
+        raise AssertionError("unreachable")
 
     try:
         handler(input_data)

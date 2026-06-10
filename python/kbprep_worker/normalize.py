@@ -56,13 +56,13 @@ def _compile_ocr_rules(items: object, source: Path) -> list[OcrRule]:
     return compiled
 
 
-def normalize(converted_text: str, run_dir: str, mineru_artifacts: dict = None) -> dict:
+def normalize(converted_text: str, run_dir: str, mineru_artifacts: dict | None = None) -> dict:
     """
     Normalize converted markdown: fix OCR errors, fix formatting.
     Returns dict with normalized_text, fix_count, warnings.
     """
-    warnings = []
-    fixes = []
+    warnings: list[str] = []
+    fixes: list[dict] = []
     text = converted_text
 
     # ── Step 1: Fix HTML tables → Markdown tables ─────────────────

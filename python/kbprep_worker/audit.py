@@ -72,9 +72,9 @@ def _generate_audit_md(
         "",
     ]
 
-    status_counts = {}
+    status_counts: dict[str, int] = {}
     for b in blocks:
-        s = b.get("status", "unclassified")
+        s = str(b.get("status", "unclassified"))
         status_counts[s] = status_counts.get(s, 0) + 1
 
     lines.append("## Block Statistics")

@@ -57,6 +57,7 @@ def _string_list(value: object) -> list[str]:
         return []
     if not isinstance(value, list):
         fail("E_INVALID_INPUT", "examples and counterexamples must be lists")
+        raise AssertionError("unreachable")
     result = []
     for item in value:
         if not isinstance(item, str) or not item.strip():

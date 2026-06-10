@@ -90,7 +90,7 @@ def setup_gpu(venv_python: str | None = None, device_override: str | None = None
     """Detect hardware and install CUDA torch into the KBPrep venv when appropriate."""
     python = venv_python or sys.executable
     torch_probe = probe_torch(python)
-    result = {
+    result: dict[str, object] = {
         "nvidia_driver": check_nvidia_driver(),
         "torch": torch_probe,
         "torch_cuda": bool(torch_probe.get("cuda_available")),
@@ -101,9 +101,11 @@ def setup_gpu(venv_python: str | None = None, device_override: str | None = None
         "cuda_torch_packages": CUDA_TORCH_PACKAGES,
         "actions_taken": [],
     }
+    actions_taken = result["actions_taken"]
+    assert isinstance(actions_taken, list)
 
     if device_override == "cpu":
-        result["actions_taken"].append("cuda_install_skipped_device_override_cpu")
+        actions_taken.append("cuda_install_skipped_device_override_cpu")
         return result
 
     if result["nvidia_driver"] and not result["torch_cuda"]:
@@ -126,8 +128,8 @@ def setup_gpu(venv_python: str | None = None, device_override: str | None = None
             result["torch_cuda"] = bool(torch_probe.get("cuda_available"))
             result["gpu"] = get_gpu_info(python)
             result["device"] = str(torch_probe.get("device") or "cpu")
-            result["actions_taken"].append("installed_cuda_torch")
+            actions_taken.append("installed_cuda_torch")
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            result["actions_taken"].append(f"cuda_install_failed: {exc}")
+            actions_taken.append(f"cuda_install_failed: {exc}")
 
     return result

@@ -94,6 +94,12 @@ final Markdown file while strict errors remain. Pollution residue becomes a rule
 proposal or manual review task; table, code, heading, and conversion loss remain
 blocked unless a deterministic fallback can prove the missing evidence returned.
 
+Python worker quality gates now include a whole-package type check. `npm run
+python:typecheck` runs mypy across `python/kbprep_worker`, including untyped
+function bodies, so new Python worker code cannot be hidden outside a small
+allowlist. Third-party libraries without stubs are handled by targeted mypy
+overrides rather than by disabling worker-wide import checking.
+
 `next_actions` is the compact machine-readable summary of what failed.
 `quality_tasks` is the executable handoff package for a user or AI coding agent.
 Each task names the failed gate, goal, background, files to read, allowed and

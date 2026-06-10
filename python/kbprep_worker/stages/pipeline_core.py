@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 class PipelineError(Exception):
     """Raised when a pipeline stage fails."""
-    def __init__(self, code: str, message: str, details: dict = None):
+    def __init__(self, code: str, message: str, details: dict | None = None):
         self.code = code
         self.message = message
         self.details = details or {}

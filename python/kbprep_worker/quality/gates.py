@@ -18,8 +18,8 @@ def _build_quality_gates(strict_errors: list[str], warnings: list[str], report: 
         "review_safety": "AI or human review patches are validated before publication.",
         "export_readiness": "Final Obsidian/Markdown output may be published.",
     }
-    grouped_errors = {name: [] for name in gate_order}
-    grouped_warnings = {name: [] for name in gate_order}
+    grouped_errors: dict[str, list[str]] = {name: [] for name in gate_order}
+    grouped_warnings: dict[str, list[str]] = {name: [] for name in gate_order}
 
     for error in strict_errors:
         gate = _quality_gate_for_message(error)

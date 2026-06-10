@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..envelope import fail
 from ..rule_loader import load_cleaning_rules, rules_root
+from ..typing_helpers import as_int
 from .patterns import _optional_string, _string_list
 
 def _target_rules_dir(data: dict) -> Path:
@@ -14,16 +15,14 @@ def _target_rules_dir(data: dict) -> Path:
     return rules_root()
 
 def _positive_int(value: object, default: int) -> int:
-    try:
-        parsed = int(value) if value is not None else default
-    except (TypeError, ValueError):
-        parsed = default
+    parsed = as_int(value, default=default) if value is not None else default
     return max(1, parsed)
 
 def _required_path(data: dict, key: str) -> Path:
     value = data.get(key)
     if not isinstance(value, str) or not value.strip():
         fail("E_INPUT_NOT_FOUND", f"{key} is required")
+        raise AssertionError("unreachable")
     path = Path(value).expanduser().resolve()
     if key == "run_dir" and not path.exists():
         fail("E_INPUT_NOT_FOUND", f"run_dir does not exist: {path}")

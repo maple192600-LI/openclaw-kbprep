@@ -304,7 +304,7 @@ def rich_html_to_markdown(
             return [image] if image else []
         if name in {"div", "main", "body", "html"}:
             classes = set(node.get("class") or [])
-            lines: list[str] = []
+            child_lines: list[str] = []
             if "card" in classes or "case-card" in classes:
                 title = None
                 for heading_tag in ["h3", "h4"]:
@@ -313,19 +313,19 @@ def rich_html_to_markdown(
                         title = inline(found)
                         break
                 if title:
-                    lines.append(f"#### {title}")
+                    child_lines.append(f"#### {title}")
             for child in node.children:
                 if isinstance(child, Tag) and "card" in classes and child.name and child.name.lower() in {"h3", "h4"}:
                     continue
-                lines.extend(block(child, depth + 1))
-            return lines
+                child_lines.extend(block(child, depth + 1))
+            return child_lines
         if name in {"span", "strong", "b", "em", "i", "a", "code"}:
             value = inline(node)
             return [value] if value else []
-        lines: list[str] = []
+        fallback_lines: list[str] = []
         for child in node.children:
-            lines.extend(block(child, depth + 1))
-        return lines
+            fallback_lines.extend(block(child, depth + 1))
+        return fallback_lines
 
     lines = block(body)
     cleaned: list[str] = []
@@ -372,9 +372,10 @@ def _parse_svg_view_box(value: str) -> tuple[float, float, float, float] | None:
     if len(parts) != 4:
         return None
     try:
-        numbers = tuple(float(part) for part in parts)
+        n0, n1, n2, n3 = (float(part) for part in parts)
     except ValueError:
         return None
+    numbers = (n0, n1, n2, n3)
     if numbers[2] <= 0 or numbers[3] <= 0:
         return None
     return numbers

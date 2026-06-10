@@ -71,6 +71,7 @@ const requiredFiles = [
   "python/kbprep_worker/prepare_diagnosis.py",
   "python/kbprep_worker/prepare_runtime.py",
   "python/kbprep_worker/repair_loop.py",
+  "python/kbprep_worker/typing_helpers.py",
   "python/kbprep_worker/quality/__init__.py",
   "python/kbprep_worker/quality/runner.py",
   "python/kbprep_worker/quality/gates.py",

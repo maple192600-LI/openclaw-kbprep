@@ -21,11 +21,11 @@ def _suggest_dictionary_updates(data: dict) -> None:
     rejected = _read_jsonl(rules_dir / "rejected_rules.jsonl")
     min_count = _positive_int(data.get("min_feedback_count"), 2)
 
-    rejected_keys = {
-        _feedback_cluster_key(item)
-        for item in rejected
-        if _feedback_cluster_key(item)
-    }
+    rejected_keys: set[tuple[str, str, str, str]] = set()
+    for item in rejected:
+        key = _feedback_cluster_key(item)
+        if key:
+            rejected_keys.add(key)
     groups: dict[str, list[dict]] = {}
     for item in accepted:
         key = _feedback_cluster_key(item)
@@ -74,6 +74,7 @@ def _promote_dictionary_suggestion(data: dict) -> None:
     document_type = _optional_string(data.get("document_type"))
     if not document_type or document_type == "unknown":
         fail("E_INVALID_INPUT", "document_type is required and cannot be unknown")
+        raise AssertionError("unreachable")
 
     rules_dir = _rules_dir(data)
     suggestions_path = Path(
@@ -93,6 +94,7 @@ def _promote_dictionary_suggestion(data: dict) -> None:
     )
     if not suggestion:
         fail("E_INPUT_NOT_FOUND", f"dictionary suggestion not found for document_type: {document_type}")
+        raise AssertionError("unreachable")
 
     validation = _validate_dictionary_suggestion(suggestion, str(suggestions_path))
     target_rules_dir = _target_rules_dir(data)
@@ -230,11 +232,13 @@ def _validate_dictionary_suggestion(suggestion: dict, source: str) -> dict:
     proposed_rules = suggestion.get("proposed_rules")
     if not isinstance(proposed_rules, list) or not proposed_rules:
         fail("E_INVALID_INPUT", f"{source}: proposed_rules must be a non-empty list")
+        raise AssertionError("unreachable")
 
     validated = []
     for idx, item in enumerate(proposed_rules):
         if not isinstance(item, dict):
             fail("E_INVALID_INPUT", f"{source}: proposed_rules[{idx}] must be an object")
+            raise AssertionError("unreachable")
         action = _optional_string(item.get("action"))
         match = _optional_string(item.get("match")) or "literal"
         pattern = _optional_string(item.get("pattern"))
@@ -245,6 +249,7 @@ def _validate_dictionary_suggestion(suggestion: dict, source: str) -> dict:
             fail("E_INVALID_INPUT", f"{source}: proposed_rules[{idx}].match must be literal or regex")
         if not pattern:
             fail("E_INVALID_INPUT", f"{source}: proposed_rules[{idx}].pattern is required")
+            raise AssertionError("unreachable")
         if match == "regex":
             try:
                 re.compile(pattern)
