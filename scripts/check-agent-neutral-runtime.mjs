@@ -16,16 +16,11 @@ const explicitFiles = [
 ];
 
 const namedAgentTerms = [
-  "claude",
-  "codex",
-  "openclaw",
-  "hermes",
+  ["cla", "ude"].join(""),
+  ["cod", "ex"].join(""),
+  ["open", "claw"].join(""),
+  ["her", "mes"].join(""),
 ];
-
-const allowedFiles = new Set([
-  "scripts/check-agent-neutral-runtime.mjs",
-  "scripts/check-guidance-drift.mjs",
-]);
 
 function collectFiles(relativeRoot) {
   const absoluteRoot = path.join(repoRoot, relativeRoot);
@@ -57,13 +52,9 @@ const checkedFiles = [
 
 const violations = [];
 for (const relative of checkedFiles) {
-  if (allowedFiles.has(relative)) continue;
   const text = readFileSync(path.join(repoRoot, relative), "utf8");
   const lines = text.split(/\r?\n/);
   for (const [index, line] of lines.entries()) {
-    if (relative === "scripts/check-pack.mjs" && line.includes("docs/install/")) {
-      continue;
-    }
     const lowered = line.toLowerCase();
     for (const term of namedAgentTerms) {
       if (lowered.includes(term)) {

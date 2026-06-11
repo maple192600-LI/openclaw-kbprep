@@ -12,7 +12,7 @@ import {
 } from "./index.js";
 
 describe("kbprep package entry", () => {
-  it("exports the host-neutral standalone CLI contract", async () => {
+  it("exports the agent-independent standalone CLI contract", async () => {
     const result = await runStandaloneCli("prepare", ["--help"]);
 
     expect(result.exitCode).toBe(0);
@@ -30,9 +30,9 @@ describe("kbprep package entry", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf-8")) as Record<string, unknown>;
 
     expect(entry.default).toBeUndefined();
-    expect(rootSource).not.toContain("adapters/openclaw");
+    expect(rootSource).not.toContain("adapters/vendor_host");
     expect(rootSource).not.toContain("plugin-sdk");
-    expect(pkg).not.toHaveProperty("openclaw");
+    expect(pkg).not.toHaveProperty("agentHost");
   });
 
   it("targets a KBPrep-local Python environment instead of a workspace or system dependency environment", () => {
@@ -40,7 +40,7 @@ describe("kbprep package entry", () => {
 
     expect(runtimePath).toContain(join(".kbprep", "venv"));
     expect(runtimePath).toContain(process.platform === "win32" ? join("Scripts", "python.exe") : join("bin", "python"));
-    expect(resolvePythonPath(join(tmpdir(), "kbprep-output"))).not.toContain(join(".openclaw", "workspace-wiki"));
+    expect(resolvePythonPath(join(tmpdir(), "kbprep-output"))).not.toContain(join(".agent-host", "workspace-wiki"));
   });
 
   it("rejects stale KBPrep-local Python runtime markers instead of reusing wrong environments", () => {

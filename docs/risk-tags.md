@@ -9,7 +9,7 @@ KBPrep uses risk tags to explain why a block was kept, discarded, treated as evi
 - `parameter_or_number`: threshold, count, version, price, timing, identifier, or other numeric detail.
 - `prompt_or_code`: prompt text, code, shell command, config, or structured snippet.
 - `case_or_failure`: example, failed attempt, caveat, exception, retry, or lesson learned.
-- `link_or_reference`: URL, filename, title, citation, or named source.
+- `link_or_reference`: link text, filename, title, citation, or named source.
 - `table_or_structured_data`: table, checklist, form, CSV-like content, or field/value structure.
 
 Blocks with these signals should usually stay in the main output or go to `review_needed.md`. They should not be silently discarded.

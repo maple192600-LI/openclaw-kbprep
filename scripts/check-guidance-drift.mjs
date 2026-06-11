@@ -6,7 +6,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 
 const roots = [
   "docs",
-  "skills",
 ];
 
 const explicitFiles = [
@@ -18,11 +17,11 @@ const explicitFiles = [
 ];
 
 const forbiddenPhrases = [
-  "openclaw-kbprep",
-  "OpenClaw adapter id",
-  "OpenClaw subagent compatibility",
-  "src/adapters/openclaw",
-  "optional peer dependency for non-OpenClaw",
+  ["open", "claw"].join("") + "-kbprep",
+  "adapter id",
+  "subagent compatibility",
+  "src/adapters/host",
+  "optional peer dependency",
   "legacy course/self-media",
   "Legacy `curated_obsidian_kb`",
   "tuned for Simplified Chinese self-media",

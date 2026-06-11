@@ -1,6 +1,6 @@
 # KBPrep Agent Notes
 
-KBPrep is a host-neutral local CLI project. Do not add business logic for a specific agent host.
+KBPrep is a local CLI project. Do not add business logic for a specific AI development agent host.
 
 ## Product Stage
 
@@ -36,9 +36,9 @@ The current development metric is not "produces Markdown once." The metric is th
 
 ## Boundaries
 
-- Do not create Claude Code, Codex, OpenClaw, Hermes, or other host adapter code in this repository.
-- Provide CLI commands, `skills/kbprep/SKILL.md`, and installation docs only.
-- Let each host or user package the skill with that host's own skill/plugin creator.
+- Do not create AI development agent host adapter code in this repository.
+- Provide CLI commands, core flow docs, and package/runtime docs only.
+- Let each calling environment package this project with its own external tooling.
 - Do not hardcode self-media, platform, author, or course-brand cleanup in Python logic. Put reusable cleanup knowledge in `rules/`.
 - Do not build OCR from scratch. Use the existing converter/OCR route and keep its quality evidence auditable.
 - Do not let any tool path bypass the quality gates and write a final result directly.
@@ -75,7 +75,7 @@ If automated tests are not enough for the change, provide manual acceptance step
 
 - Run `npm run dev:check` for documentation, configuration, packaging, and narrow implementation changes.
 - Run `npm run dev:full-check` for converter routes, quality gates, cleanup lifecycle, feedback promotion, release, dependency, or runtime changes.
-- `npm run pack:check` also verifies protected design documents, project governance wiring, capability matrix drift, hardcoded cleanup terms, host-neutral runtime boundaries, audit guard checks, thresholds, and npm package contents.
+- `npm run pack:check` also verifies protected design documents, project governance wiring, capability matrix drift, hardcoded cleanup terms, agent-independent runtime boundaries, audit guard checks, thresholds, and npm package contents.
 - Do not claim a KBPrep output is accepted unless `quality_report.json` has no strict errors and the successful run published the expected `latest_outputs`.
 - Do not promote a `partial` or `unsupported` capability to `verified` without golden fixtures and named test evidence in `python/kbprep_worker/converter_capabilities.py`.
 - If a check cannot run, report the exact command, the reason it could not run, and the remaining manual acceptance steps.

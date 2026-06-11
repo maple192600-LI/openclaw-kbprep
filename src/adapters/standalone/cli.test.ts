@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { buildCliPlan, parseStandaloneArgs, runStandaloneCli } from "./cli.js";
 
 describe("standalone KBPrep CLI adapter", () => {
-  it("prints help without requiring a host adapter or Python setup", async () => {
+  it("prints help without requiring an agent-host adapter or Python setup", async () => {
     const result = await runStandaloneCli("prepare", ["--help"]);
 
     expect(result.exitCode).toBe(0);

@@ -2,7 +2,7 @@
 
 ## 0.5.1
 
-- Renamed the npm package identity to `kbprep` and kept the maintained contract on the host-neutral CLI package.
+- Renamed the npm package identity to `kbprep` and kept the maintained contract on the agent-independent CLI package.
 - Added a generic AI review backend interface for caller-injected review hosts.
 - Hardened CTA rules, worker stdin handling, AI review patch parsing, error-code naming, and tracked `dist/` checks.
 - Added standalone CLI and known-issues documentation.
@@ -13,7 +13,7 @@
 - Removed host-specific tool registration from the maintained runtime surface.
 - Added standalone CLI entry points: `kbprep-preflight`, `kbprep-analyze`, `kbprep-prepare`, `kbprep-apply-review`, `kbprep-cleanup`, and `kbprep-batch`.
 - Kept host dependencies outside the CLI package contract.
-- Added host-neutral boundary and risk-tag documentation.
+- Added agent-independent boundary and risk-tag documentation.
 
 ## 0.4.4
 

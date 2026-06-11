@@ -6,7 +6,7 @@ import { maybeRunAiReview } from "./aiReview.js";
 import { buildBackend, type AIReviewBackend } from "./adapters/ai_review/index.js";
 import type { WorkerResult } from "./worker.js";
 
-describe("host-neutral AI review protocol", () => {
+describe("agent-independent AI review protocol", () => {
   it("can call a configured standalone external review command", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "kbprep-ai-review-command-"));
     const commandPath = path.join(root, "reviewer.mjs");

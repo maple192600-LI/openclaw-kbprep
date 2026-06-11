@@ -21,7 +21,7 @@ class DiagnoseTextQualityBehaviorTests(unittest.TestCase):
         self.assertEqual(profile["text_profile"], "tutorial")
 
     def test_mojibake_text_has_high_unreadable_ratio(self):
-        text = "OpenClaw姗欑毊涔︿粠鍏ラ棬鍒扮簿閫氾紝娑电洊鏋舵瀯鍘熺悊" * 8
+        text = "ExampleTool姗欑毊涔︿粠鍏ラ棬鍒扮簿閫氾紝娑电洊鏋舵瀯鍘熺悊" * 8
 
         quality = analyze_text_quality(text)
 

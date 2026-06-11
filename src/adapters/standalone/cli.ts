@@ -79,7 +79,7 @@ const HELP: Record<StandaloneCommand, string> = {
   prepare_batch: [
     "Usage: kbprep-batch --input <dir> --output <dir> [--profile lite|standard|obsidian_kb|curated_obsidian_kb] [--mode rules_only|rules_plus_review_pack] [--max-quality-iterations <n>] [--convert-jobs <n>] [--config-file <file>]",
     "",
-    "Processes a directory through the same host-neutral Python worker used by all callers.",
+    "Processes a directory through the same agent-independent Python worker used by all callers.",
   ].join("\n"),
 };
 

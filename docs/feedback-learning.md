@@ -119,13 +119,13 @@ It intentionally creates proposals first:
   to `source_pattern` and records `repeat_feedback` evidence instead of staying
   as a broad `user` rule
 - repeated feedback uses structured `source_identity` before filename prefixes;
-  if runs share a domain or site, KBPrep prefers keyed scopes such as
-  `source_domain:example.com` over broad file-name guesses
+  if runs share a local export folder, batch name, or source path prefix, KBPrep
+  prefers that narrow scope over broad file-name guesses
 - accepted proposals are copied to `.kbprep/rules/user/accepted_rules.jsonl`
 - accepted rules are loaded by the deterministic cleanup dictionary
 - `source_pattern` accepted rules are loaded only when the current source identity matches the accepted `source_pattern` by field scope or path/name prefix boundary
-- source identity always includes the input path, source path, and file name; when the caller provides provenance, it can also include `source_url`, `source_domain`, `site_name`, `origin`, `origin_url`, `source_title`, and nested `source_metadata`
-- `source_pattern` can be a plain prefix-boundary pattern such as `site-a`, or a keyed fragment such as `source_domain:example.com`; keyed fragments only match that identity field
+- source identity always includes the input path, source path, and file name; local callers may also record a source title, origin label, export batch, or other local metadata
+- `source_pattern` can be a plain prefix-boundary pattern such as `exports/course-a` or `course-a`; it matches local source paths or file names at safe boundaries
 - accepted rule files fail during dictionary loading when a JSONL line is
   invalid or a `regex` pattern cannot compile; errors include the rule file and
   line number so the user can fix the learned dictionary before rerunning
@@ -155,9 +155,8 @@ Example:
 
 ```bash
 kbprep-feedback --run-dir ./.kbprep/source/run-123 --feedback-text "下次删除「关注公众号」这种污染"
-kbprep-feedback --run-dir ./.kbprep/source/run-123 --scope source_pattern --source-pattern "site-a" --feedback-text "这个来源以后删除「站点专属广告」"
-kbprep-prepare --input ./source.md --output ./.kbprep/source --source-url "https://example.com/course/lesson-1" --source-domain "example.com" --site-name "Example Course"
-kbprep-feedback --run-dir ./.kbprep/source/run-123 --scope source_pattern --source-pattern "source_domain:example.com" --feedback-text "这个来源以后删除「来源专属广告」"
+kbprep-feedback --run-dir ./.kbprep/source/run-123 --scope source_pattern --source-pattern "export-a" --feedback-text "这个本地导出来源以后删除「批次专属广告」"
+kbprep-feedback --run-dir ./.kbprep/source/run-123 --scope source_pattern --source-pattern "exports/course-a" --feedback-text "这个本地导出批次以后删除「来源专属广告」"
 kbprep-feedback --accept-proposal latest --rerun-after-accept
 kbprep-feedback --reject-proposal latest --reject-reason "这是正文案例，不是污染"
 kbprep-feedback --suggest-dictionary-updates --rules-dir ./.kbprep/rules/user --min-feedback-count 2
@@ -168,8 +167,8 @@ kbprep-feedback --resolve-promotion-failures --document-type course --confirm-fa
 
 ## Implemented Source Identity Matching
 
-`source_pattern` no longer depends only on file paths. A host, skill, or CLI caller can pass source provenance during `prepare`, and KBPrep records it in `run_metadata.json` as `source_identity`. Deterministic cleanup uses the same identity when deciding whether a source-scoped accepted rule should load.
+`source_pattern` no longer depends only on file names. KBPrep records local source identity in `run_metadata.json`. Deterministic cleanup uses the same identity when deciding whether a source-scoped accepted rule should load.
 
-This keeps learned source-specific cleanup narrow: a rule for `source_domain:example.com` can remove that site's boilerplate without affecting unrelated files that happen to share the same body text.
+This keeps learned source-specific cleanup narrow: a rule for `exports/course-a` can remove that export batch's boilerplate without affecting unrelated files that happen to share the same body text.
 
-Plain `source_pattern` values do not use arbitrary substring matching. They match source paths or file names at a path/name prefix boundary, so `site-a` can match `site-a-page.md` while `test` does not match `contest_report.pdf`. Prefer keyed patterns such as `source_domain:example.com` whenever provenance is known.
+Plain `source_pattern` values do not use arbitrary substring matching. They match source paths or file names at a path/name prefix boundary, so `course-a` can match `course-a-page.md` while `test` does not match `contest_report.pdf`.

@@ -96,10 +96,10 @@ the same metadata is updated with `document_type` and
 `document_type_detection`, so later feedback and reruns can reuse the detected
 document category instead of guessing from the filename.
 When `source_identity` is present, feedback learning also uses it before
-filename-prefix guessing. Repeated feedback from the same `source_domain`,
-`site_name`, `origin`, or source URL can produce a keyed `source_pattern` such
-as `source_domain:example.com`, keeping source-specific cleanup narrow without
-hardcoding platform terms into Python.
+filename-prefix guessing. Repeated feedback from the same local export folder,
+batch name, origin label, or source path can produce a narrow `source_pattern`
+such as `exports/course-a`, keeping source-specific cleanup narrow without
+hardcoding source terms into Python.
 
 Cleanup safety:
 
@@ -125,7 +125,7 @@ Semantic review:
 - after `apply_review`, `quality_report.json` marks `review_safety` as checked
   only when the guarded patch application completed and quality was rerun
 - concrete agent backends are not part of the core; a caller-injected reviewer
-  may only return the host-neutral JSON Patch protocol, and unsafe patch fields
+  may only return the agent-independent JSON Patch protocol, and unsafe patch fields
   are rejected before `apply_review`
 
 ## Export Rule

@@ -1,6 +1,6 @@
 # KBPrep
 
-KBPrep is a local, host-neutral CLI for turning source files into quality-checked Obsidian Markdown.
+KBPrep is a local CLI for turning source files into quality-checked Obsidian Markdown.
 
 The project boundary is the file-to-Markdown quality loop:
 
@@ -15,7 +15,7 @@ The project boundary is the file-to-Markdown quality loop:
 
 `kbprep-prepare` classifies document type during the pipeline and uses that detected type when selecting cleanup dictionaries.
 
-KBPrep does not maintain agent-specific adapters. Claude Code, Codex, OpenClaw, Hermes, or any other AI coding agent should call the CLI and package the repository in whatever skill/plugin format that host supports.
+KBPrep does not maintain AI development agent adapters. Calling environments should use the CLI and package the repository outside the maintained core when they need their own skill or plugin format.
 
 ## Review Hardening
 
@@ -23,7 +23,7 @@ Current hardening rules:
 
 - OCR normalization rules are data in `rules/base/ocr_normalization.json`.
 - Heading levels are preserved by default; KBPrep does not guess structural heading repairs.
-- Standalone AI review uses injected backends or a host-neutral external command protocol, and otherwise reports an explicit unavailable-backend warning.
+- Standalone AI review uses injected backends or an agent-independent external command protocol, and otherwise reports an explicit unavailable-backend warning.
 - `python/kbprep_worker/stages/pipeline.py` is a small compatibility surface; implementation details are split into focused modules such as converters and audit helpers.
 
 ## Current State
@@ -109,4 +109,4 @@ Agents should treat KBPrep as a CLI tool plus documented protocols:
 - return a validated patch or rule proposal
 - let KBPrep apply the patch and run quality gates
 
-The repository intentionally does not ship Claude Code, Codex, OpenClaw, or Hermes adapter logic.
+The repository intentionally does not ship AI development agent adapter logic.

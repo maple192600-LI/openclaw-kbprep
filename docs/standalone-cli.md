@@ -1,11 +1,10 @@
 # KBPrep Standalone CLI
 
-The standalone CLI is KBPrep's maintained host-neutral entry point. It is for local files only.
+The standalone CLI is KBPrep's maintained agent-independent entry point. It is for local files only.
 
 ## AI Review Backend
 
-Standalone KBPrep remains host-neutral. It does not ship OpenClaw, Claude,
-Codex, OpenAI, or other provider-specific review code.
+Standalone KBPrep remains agent-independent. It does not ship provider-specific review code.
 
 For automated review, callers may inject an `AIReviewBackend` in-process or
 configure an external command backend. The external command receives JSON on
@@ -44,9 +43,9 @@ from the CLI JSON envelope or the run log directory.
 kbprep-preflight --workdir ./.kbprep/check
 kbprep-analyze --input ./source.pdf --output ./.kbprep/source
 kbprep-prepare --input ./source.pdf --output ./.kbprep/source --mode rules_only --force
-kbprep-prepare --input ./source.md --output ./.kbprep/source --source-url "https://example.com/course/lesson-1" --source-domain "example.com" --site-name "Example Course"
 kbprep-apply-review --run-dir ./.kbprep/source/runs/<run-id> --patch-file ./review.patch.json
 kbprep-feedback --run-dir ./.kbprep/source/runs/<run-id> --feedback-text "下次删除「关注公众号」这种污染"
+kbprep-feedback --run-dir ./.kbprep/source/runs/<run-id> --scope source_pattern --source-pattern "exports/course-a" --feedback-text "这个本地导出批次以后删除「来源专属广告」"
 kbprep-feedback --accept-proposal latest
 kbprep-feedback --suggest-dictionary-updates --rules-dir ./.kbprep/rules/user
 kbprep-feedback --promote-dictionary-suggestion --document-type course --confirm-dictionary-update --rerun-after-promotion --rules-dir ./.kbprep/rules/user --target-rules-dir ./rules
@@ -94,7 +93,7 @@ Use `kbprep-cleanup --action finalize` only after checking `quality_report.json`
 
 Use `--suggest-dictionary-updates` after several accepted or rejected feedback records exist. It writes review-only `dictionary_suggestions.jsonl`. Use `--promote-dictionary-suggestion --confirm-dictionary-update` only after review; add `--rerun-after-promotion` so KBPrep reruns representative sources and reports whether promoted discard/protect rules behaved correctly. Every promotion appends `promotion_history.jsonl` under the target rules directory. Run `--summarize-promotion-history` before more promotions to see pass/fail/unverified trends by document type. If a document type has failed promotion history, promotion is blocked by default; `--allow-failed-promotion-history` is a risk override for explicit user-approved continuation. Use `--resolve-promotion-failures` after fixing failed samples; it appends a resolution record only when representative reruns pass. Use `--reject-proposal <id|latest>` for bad proposals; those are written to `.kbprep/rules/user/rejected_rules.jsonl` as memory and are not loaded by cleanup.
 
-For source-specific cleanup, pass provenance into `kbprep-prepare` with `--source-url`, `--source-domain`, and `--site-name` when known. KBPrep records this as `source_identity` in `run_metadata.json`, and accepted `source_pattern` rules can match keyed fragments such as `source_domain:example.com` without affecting unrelated sources. Prefer keyed patterns; plain patterns match path or file-name prefix boundaries rather than arbitrary substrings.
+For source-specific cleanup, prefer a narrow `source_pattern` based on the local export folder, batch name, or filename prefix. KBPrep records local source identity in `run_metadata.json`, and accepted `source_pattern` rules can match path or file-name prefix boundaries without affecting unrelated sources.
 
 ## Path Safety
 
